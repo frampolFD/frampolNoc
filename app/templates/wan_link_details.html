@@ -177,6 +177,36 @@ function trafficDataset(label, measurements, field, color, extra) {
   );
 }
 
+// Rolling last hour, recomputed on every call so the visible window
+// always ends at "now" even when a target has measurements for only
+// part of the hour.
+function rollingHourWindow() {
+  const now = Date.now();
+  return { min: now - 60 * 60 * 1000, max: now };
+}
+
+function trafficXAxisOptions() {
+  const { min, max } = rollingHourWindow();
+  return {
+    type: "linear",
+    min,
+    max,
+    ticks: {
+      stepSize: 5 * 60 * 1000, // tick spacing only — raw measurements are untouched
+      maxRotation: 0,
+      minRotation: 0,
+      callback: (v) => fmtChartTime(v),
+    },
+  };
+}
+
+// 24-hour, date-qualified formatter for the historical chart, whose
+// range can span days/months/years — HH:mm alone would be ambiguous
+// there, but it must still never show AM/PM.
+const HISTORY_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
+});
+
 async function loadLiveChart() {
   const measurements = await api(`/api/wan-links/${WAN_ID}/measurements?range=1h`);
   const consumption = measurements.reduce((sum, m) => sum + (m.rx_bytes_delta || 0) + (m.tx_bytes_delta || 0), 0);
@@ -194,13 +224,16 @@ async function loadLiveChart() {
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
         scales: {
-          x: { type: "linear", ticks: { callback: v => new Date(v).toLocaleTimeString() } },
+          x: trafficXAxisOptions(),
           y: { ticks: { callback: v => fmtBps(v) } },
         },
       },
     });
   } else {
     liveChart.data.datasets.forEach((ds, i) => { ds.data = datasets[i].data; ds.pointRadius = datasets[i].pointRadius; });
+    const { min, max } = rollingHourWindow();
+    liveChart.options.scales.x.min = min;
+    liveChart.options.scales.x.max = max;
     liveChart.update();
   }
 }
@@ -221,7 +254,7 @@ async function loadHistoryChart(range) {
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
         scales: {
-          x: { type: "linear", ticks: { callback: v => new Date(v).toLocaleString() } },
+          x: { type: "linear", ticks: { callback: v => HISTORY_TIME_FORMATTER.format(new Date(v)) } },
           y: { ticks: { callback: v => fmtBps(v) } },
         },
       },

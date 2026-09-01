@@ -109,6 +109,30 @@ function trafficDataset(label, measurements, field, color, extra) {
   );
 }
 
+// Rolling last hour, recomputed fresh on every call (init AND every
+// refresh) so the visible window always ends at "now" — the axis stays
+// the full hour wide even when a target has measurements for only part
+// of it (e.g. a WAN onboarded 10 minutes ago).
+function rollingHourWindow() {
+  const now = Date.now();
+  return { min: now - 60 * 60 * 1000, max: now };
+}
+
+function trafficXAxisOptions() {
+  const { min, max } = rollingHourWindow();
+  return {
+    type: "linear",
+    min,
+    max,
+    ticks: {
+      stepSize: 5 * 60 * 1000, // tick spacing only — raw measurements are untouched
+      maxRotation: 0,
+      minRotation: 0,
+      callback: (v) => fmtChartTime(v),
+    },
+  };
+}
+
 async function initChart(wanId) {
   const measurements = await api(`/api/wan-links/${wanId}/measurements?range=1h`);
   const ctx = document.getElementById(`chart-${wanId}`);
@@ -126,7 +150,7 @@ async function initChart(wanId) {
       responsive: true, maintainAspectRatio: false,
       animation: false,
       scales: {
-        x: { type: "linear", ticks: { callback: (v) => new Date(v).toLocaleTimeString() } },
+        x: trafficXAxisOptions(),
         y: { ticks: { callback: (v) => fmtBps(v) } },
       },
       plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 10 } } } },
@@ -143,6 +167,9 @@ async function refreshChart(wanId) {
     chart.data.datasets[i].data = points;
     chart.data.datasets[i].pointRadius = pointRadiusForCount(points.length);
   });
+  const { min, max } = rollingHourWindow();
+  chart.options.scales.x.min = min;
+  chart.options.scales.x.max = max;
   chart.update();
 }
 

@@ -39,10 +39,32 @@ function fmtMs(v) {
   return v.toFixed(1) + " ms";
 }
 
+// Always 24-hour, never AM/PM — an explicit locale/options object rather
+// than relying on the browser's default locale, which may render 12-hour
+// time depending on the user's system settings.
+const CHART_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+const CLOCK_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+// Graph axis labels: HH:mm, no seconds.
+function fmtChartTime(msOrDate) {
+  const d = msOrDate instanceof Date ? msOrDate : new Date(msOrDate);
+  return CHART_TIME_FORMATTER.format(d);
+}
+
+// Other displayed timestamps (e.g. "last poll"): HH:mm:ss, seconds are
+// useful there for judging how fresh a reading is.
 function fmtTime(iso) {
   if (!iso) return "never";
-  const d = new Date(iso);
-  return d.toLocaleTimeString();
+  return CLOCK_TIME_FORMATTER.format(new Date(iso));
 }
 
 function healthClass(health) {
