@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+{% block title %}WAN Link Details — Frampol NOC{% endblock %}
+{% block content %}
+<div class="crumb" id="crumb">Loading…</div>
+<div style="display:flex;justify-content:space-between;align-items:flex-start">
+  <h1 id="wan-title">WAN Link Details</h1>
+  <button class="btn" id="btn-delete-wan" style="color:var(--health-red);border-color:var(--health-red)">Delete WAN Link</button>
+</div>
+
+<div class="panel">
+  <h2>Live Graph (1 hour)</h2>
+  <div style="height:260px"><canvas id="live-chart"></canvas></div>
+</div>
+
+<div class="card-row">
+  <div class="stat-card"><div class="label">Download (RX)</div><div class="value" id="m-rx">—</div></div>
+  <div class="stat-card"><div class="label">Upload (TX)</div><div class="value" id="m-tx">—</div></div>
+  <div class="stat-card"><div class="label">Total Throughput</div><div class="value" id="m-total">—</div></div>
+  <div class="stat-card"><div class="label">Utilisation</div><div class="value" id="m-util">—</div></div>
+  <div class="stat-card"><div class="label">Latency</div><div class="value" id="m-latency">—</div></div>
+  <div class="stat-card"><div class="label">Packet Loss</div><div class="value" id="m-loss">—</div></div>
+  <div class="stat-card"><div class="label">Availability</div><div class="value" id="m-availability">—</div></div>
+  <div class="stat-card"><div class="label">Consumption (1h)</div><div class="value" id="m-consumption">—</div></div>
+</div>
+
+<div class="panel">
+  <h2>Ping</h2>
+  <div id="ping-details">Loading…</div>
+  <div class="quick-actions">
+    <button class="btn" id="btn-ping-now">Ping Now</button>
+    <button class="btn" id="btn-poll-now">Poll SNMP Now</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Historical</h2>
+  <div class="tabs">
+    <button class="tab-btn active" data-range="1d">1 Day</button>
+    <button class="tab-btn" data-range="7d">7 Days</button>
+    <button class="tab-btn" data-range="1m">1 Month</button>
+    <button class="tab-btn" data-range="1y">1 Year</button>
+  </div>
+  <div style="height:260px"><canvas id="history-chart"></canvas></div>
+</div>
+
+<div class="panel" id="alerts">
+  <h2>Alerts</h2>
+  <table class="data-table">
+    <thead><tr><th>Started</th><th>Type</th><th>Severity</th><th>Message</th><th>Status</th><th></th></tr></thead>
+    <tbody id="alerts-body"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <h2>Configuration</h2>
+  <div id="config-view" class="empty-state">Loading…</div>
+</div>
+
+<div class="panel" style="max-width:520px">
+  <h2>Polling Intervals</h2>
+  <p style="color:var(--brand-grey);font-size:13px;margin-top:-8px" id="interval-effective-note">Loading…</p>
+  <div class="form-grid" style="grid-template-columns:1fr 1fr">
+    <div class="form-field">
+      <label>ICMP override (seconds)</label>
+      <input id="icmp-interval-override" type="number" min="1" placeholder="use global default" />
+    </div>
+    <div class="form-field">
+      <label>SNMP override (seconds)</label>
+      <input id="snmp-interval-override" type="number" min="1" placeholder="use global default" />
+    </div>
+  </div>
+  <div class="quick-actions" style="margin-top:10px">
+    <button class="btn primary" id="btn-save-intervals">Save</button>
+    <button class="btn" id="btn-clear-intervals">Clear overrides (use global default)</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Engineer Notes</h2>
+  <textarea id="note-body" rows="2" style="width:100%;padding:8px;border:1px solid var(--brand-grey-border);border-radius:5px;font-family:inherit"></textarea>
+  <div style="margin-top:8px"><button class="btn primary" id="btn-add-note">Add Note</button></div>
+  <div id="notes-list" style="margin-top:14px"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const WAN_ID = {{ wan_link_id }};
+let liveChart, historyChart, currentWan;
+
+function fmtDataVolume(bytes) {
+  if (bytes === null || bytes === undefined) return "—";
+  if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + " GB";
+  if (bytes >= 1e6) return (bytes / 1e6).toFixed(2) + " MB";
+  if (bytes >= 1e3) return (bytes / 1e3).toFixed(1) + " KB";
+  return bytes + " B";
+}
+
+async function loadHeader() {
+  currentWan = await api(`/api/wan-links/${WAN_ID}`);
+  document.getElementById("wan-title").textContent = currentWan.name_generated;
+  const bc = await api(`/api/branches/${currentWan.branch_id}/breadcrumb`);
+  const parts = [bc.customer, bc.city, bc.suburb, bc.branch, currentWan.name_generated].filter(Boolean);
+  document.getElementById("crumb").innerHTML = parts.slice(0, -1).join(" > ") + ` > <a href="/branches/${bc.branch_id}">${bc.branch}</a>`;
+  renderConfig(currentWan);
+  renderIntervals(currentWan);
+}
+
+function renderIntervals(wan) {
+  document.getElementById("icmp-interval-override").value = wan.icmp_interval_seconds ?? "";
+  document.getElementById("snmp-interval-override").value = wan.snmp_interval_seconds ?? "";
+  const icmpSource = wan.icmp_interval_seconds ? "custom" : "global default";
+  const snmpSource = wan.snmp_interval_seconds ? "custom" : "global default";
+  document.getElementById("interval-effective-note").textContent =
+    `Currently polling ICMP every ${wan.effective_icmp_interval_seconds}s (${icmpSource}), ` +
+    `SNMP every ${wan.effective_snmp_interval_seconds}s (${snmpSource}). Leave blank to use the admin-configured global default.`;
+}
+
+async function saveIntervals() {
+  const icmpVal = document.getElementById("icmp-interval-override").value;
+  const snmpVal = document.getElementById("snmp-interval-override").value;
+  currentWan = await api(`/api/wan-links/${WAN_ID}/polling-intervals`, {
+    method: "PATCH",
+    body: {
+      icmp_interval_seconds: icmpVal ? parseInt(icmpVal, 10) : null,
+      snmp_interval_seconds: snmpVal ? parseInt(snmpVal, 10) : null,
+    },
+  });
+  renderIntervals(currentWan);
+}
+
+document.getElementById("btn-save-intervals").addEventListener("click", saveIntervals);
+document.getElementById("btn-clear-intervals").addEventListener("click", async () => {
+  document.getElementById("icmp-interval-override").value = "";
+  document.getElementById("snmp-interval-override").value = "";
+  await saveIntervals();
+});
+
+function renderConfig(wan) {
+  document.getElementById("config-view").innerHTML = `
+    <table class="data-table">
+      <tr><th>ISP</th><td>${wan.isp_name || "—"}</td></tr>
+      <tr><th>Circuit Capacity</th><td>${fmtBps(wan.circuit_capacity_bps)}</td></tr>
+      <tr><th>Role</th><td>${wan.role}</td></tr>
+      <tr><th>Public IP</th><td>${wan.public_ip || "—"}</td></tr>
+      <tr><th>ICMP Target</th><td>${wan.icmp_enabled ? wan.icmp_target_ip : "disabled"}</td></tr>
+      <tr><th>SNMP Target</th><td>${wan.snmp_enabled ? wan.snmp_target_ip : "disabled"}</td></tr>
+      <tr><th>Selected Interface</th><td>${wan.selected_interface_name || "not selected"} (ifIndex ${wan.selected_if_index ?? "—"})</td></tr>
+      <tr><th>Sustained Utilisation Alert</th><td>${wan.sustained_util_threshold_percent}% for ${wan.sustained_util_duration_seconds}s</td></tr>
+      <tr><th>Notes</th><td>${wan.notes || "—"}</td></tr>
+    </table>
+  `;
+}
+
+async function refreshMetrics() {
+  const wan = await api(`/api/wan-links/${WAN_ID}`);
+  currentWan = wan;
+  document.getElementById("m-rx").textContent = fmtBps(wan.latest.rx_bps);
+  document.getElementById("m-tx").textContent = fmtBps(wan.latest.tx_bps);
+  document.getElementById("m-total").textContent = fmtBps(wan.latest.total_bps);
+  document.getElementById("m-util").textContent = fmtPercent(wan.latest.utilisation_percent);
+  document.getElementById("m-latency").textContent = fmtMs(wan.latest.latency_ms);
+  document.getElementById("m-loss").textContent = fmtPercent(wan.latest.packet_loss_percent);
+  document.getElementById("m-availability").textContent = wan.latest.availability === true ? "Up" : wan.latest.availability === false ? "Down" : "—";
+  document.getElementById("ping-details").innerHTML = `
+    Last ICMP poll: ${fmtTime(wan.latest.last_icmp_poll_at)} &nbsp;|&nbsp;
+    Last SNMP poll: ${fmtTime(wan.latest.last_snmp_poll_at)} &nbsp;|&nbsp;
+    Jitter: ${fmtMs(wan.latest.jitter_ms)}
+  `;
+}
+
+async function loadLiveChart() {
+  const measurements = await api(`/api/wan-links/${WAN_ID}/measurements?range=1h`);
+  const consumption = measurements.reduce((sum, m) => sum + (m.rx_bytes_delta || 0) + (m.tx_bytes_delta || 0), 0);
+  document.getElementById("m-consumption").textContent = fmtDataVolume(consumption);
+
+  const labels = measurements.map(m => new Date(m.timestamp).toLocaleTimeString());
+  const datasets = [
+    { label: "RX", data: measurements.map(m => m.rx_bps), borderColor: "#2e7d32", pointRadius: 0, tension: 0.2 },
+    { label: "TX", data: measurements.map(m => m.tx_bps), borderColor: "#7a1f2e", pointRadius: 0, tension: 0.2 },
+    { label: "Total", data: measurements.map(m => m.total_bps), borderColor: "#5c5c5c", pointRadius: 0, tension: 0.2, borderDash: [4, 3] },
+  ];
+  if (!liveChart) {
+    liveChart = new Chart(document.getElementById("live-chart"), {
+      type: "line",
+      data: { labels, datasets },
+      options: { responsive: true, maintainAspectRatio: false, animation: false, scales: { y: { ticks: { callback: v => fmtBps(v) } } } },
+    });
+  } else {
+    liveChart.data.labels = labels;
+    liveChart.data.datasets.forEach((ds, i) => ds.data = datasets[i].data);
+    liveChart.update();
+  }
+}
+
+let currentRange = "1d";
+async function loadHistoryChart(range) {
+  currentRange = range;
+  const measurements = await api(`/api/wan-links/${WAN_ID}/measurements?range=${range}`);
+  const labels = measurements.map(m => new Date(m.timestamp).toLocaleString());
+  const datasets = [
+    { label: "RX", data: measurements.map(m => m.rx_bps), borderColor: "#2e7d32", pointRadius: 0, tension: 0.2 },
+    { label: "TX", data: measurements.map(m => m.tx_bps), borderColor: "#7a1f2e", pointRadius: 0, tension: 0.2 },
+    { label: "Total", data: measurements.map(m => m.total_bps), borderColor: "#5c5c5c", pointRadius: 0, tension: 0.2, borderDash: [4, 3] },
+  ];
+  if (!historyChart) {
+    historyChart = new Chart(document.getElementById("history-chart"), {
+      type: "line",
+      data: { labels, datasets },
+      options: { responsive: true, maintainAspectRatio: false, animation: false, scales: { y: { ticks: { callback: v => fmtBps(v) } } } },
+    });
+  } else {
+    historyChart.data.labels = labels;
+    historyChart.data.datasets.forEach((ds, i) => ds.data = datasets[i].data);
+    historyChart.update();
+  }
+}
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    loadHistoryChart(btn.dataset.range);
+  });
+});
+
+async function loadAlerts() {
+  const alerts = await api(`/api/wan-links/${WAN_ID}/alerts`);
+  const body = document.getElementById("alerts-body");
+  if (alerts.length === 0) {
+    body.innerHTML = '<tr><td colspan="6" class="empty-state">No alerts</td></tr>';
+    return;
+  }
+  body.innerHTML = alerts.map(a => `
+    <tr class="alert-row ${a.severity}">
+      <td>${new Date(a.started_at).toLocaleString()}</td>
+      <td>${a.alert_type}</td>
+      <td>${a.severity}</td>
+      <td>${a.message}</td>
+      <td>${a.ended_at ? "resolved" : "open"}</td>
+      <td>${!a.ended_at && !a.acknowledged_at ? `<button class="btn" onclick="ackAlert(${a.id})">Ack</button>` : (a.acknowledged_at ? "acked" : "")}</td>
+    </tr>
+  `).join("");
+}
+
+async function ackAlert(alertId) {
+  await api(`/api/wan-links/${WAN_ID}/alerts/${alertId}/ack`, { method: "POST" });
+  loadAlerts();
+}
+
+async function loadNotes() {
+  const notes = await api(`/api/wan-links/${WAN_ID}/notes`);
+  document.getElementById("notes-list").innerHTML = notes.map(n => `
+    <div style="border-bottom:1px solid var(--brand-grey-border);padding:8px 0;font-size:13px">
+      <div style="color:var(--brand-grey);font-size:11px">${new Date(n.created_at).toLocaleString()}</div>
+      <div>${n.body.replace(/</g, "&lt;")}</div>
+    </div>
+  `).join("") || '<div class="empty-state">No notes yet</div>';
+}
+
+document.getElementById("btn-add-note").addEventListener("click", async () => {
+  const body = document.getElementById("note-body").value.trim();
+  if (!body) return;
+  await api(`/api/wan-links/${WAN_ID}/notes`, { method: "POST", body: { body } });
+  document.getElementById("note-body").value = "";
+  loadNotes();
+});
+
+document.getElementById("btn-ping-now").addEventListener("click", async (ev) => {
+  ev.target.disabled = true;
+  try { await api(`/api/wan-links/${WAN_ID}/ping-now`, { method: "POST" }); await refreshMetrics(); await loadLiveChart(); }
+  finally { ev.target.disabled = false; }
+});
+document.getElementById("btn-poll-now").addEventListener("click", async (ev) => {
+  ev.target.disabled = true;
+  try { await api(`/api/wan-links/${WAN_ID}/poll-now`, { method: "POST" }); await refreshMetrics(); await loadLiveChart(); }
+  finally { ev.target.disabled = false; }
+});
+
+document.getElementById("btn-delete-wan").addEventListener("click", async () => {
+  if (!confirm(`Permanently delete "${currentWan.name_generated}" and all its measurement/alert history? This cannot be undone.`)) return;
+  await api(`/api/wan-links/${WAN_ID}`, { method: "DELETE" });
+  window.location.href = `/branches/${currentWan.branch_id}`;
+});
+
+(async () => {
+  await loadHeader();
+  await refreshMetrics();
+  await loadLiveChart();
+  await loadHistoryChart(currentRange);
+  await loadAlerts();
+  await loadNotes();
+  setInterval(async () => { await refreshMetrics(); await loadLiveChart(); await loadAlerts(); }, 10000);
+})();
+</script>
+{% endblock %}

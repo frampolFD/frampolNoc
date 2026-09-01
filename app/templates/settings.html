@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Settings — Frampol NOC{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+<div id="notice-area"></div>
+<div class="panel" style="max-width:480px">
+  <h2>Default Polling Intervals</h2>
+  <p style="color:var(--brand-grey);font-size:13px;margin-top:-8px">
+    Applies to every WAN link that doesn't have its own override set (see the
+    "Polling Intervals" panel on a WAN Link's details page).
+  </p>
+  <div class="form-grid" style="grid-template-columns:1fr">
+    <div class="form-field">
+      <label>ICMP (ping) interval — seconds</label>
+      <input id="icmp-interval" type="number" min="1" />
+    </div>
+    <div class="form-field">
+      <label>SNMP interval — seconds</label>
+      <input id="snmp-interval" type="number" min="1" />
+    </div>
+  </div>
+  <div class="quick-actions" style="margin-top:14px">
+    <button class="btn primary" id="btn-save">Save</button>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadSettings() {
+  try {
+    const s = await api("/api/admin/settings");
+    document.getElementById("icmp-interval").value = s.icmp_interval_seconds;
+    document.getElementById("snmp-interval").value = s.snmp_interval_seconds;
+  } catch (e) {
+    document.getElementById("notice-area").innerHTML = `<div class="notice error">${e.message}</div>`;
+  }
+}
+
+document.getElementById("btn-save").addEventListener("click", async () => {
+  const notice = document.getElementById("notice-area");
+  notice.innerHTML = "";
+  try {
+    await api("/api/admin/settings", {
+      method: "PUT",
+      body: {
+        icmp_interval_seconds: parseInt(document.getElementById("icmp-interval").value, 10),
+        snmp_interval_seconds: parseInt(document.getElementById("snmp-interval").value, 10),
+      },
+    });
+    notice.innerHTML = '<div class="notice success">Saved. New intervals take effect on WAN links without their own override within one worker tick.</div>';
+  } catch (e) {
+    notice.innerHTML = `<div class="notice error">${e.message}</div>`;
+  }
+});
+
+loadSettings();
+</script>
+{% endblock %}

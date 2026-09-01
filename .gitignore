@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+*.db
+.env
+uvicorn.log
+uvicorn.out.log
+uvicorn.err.log
+.pytest_cache/
+frampol_noc_snmp_mvp.zip

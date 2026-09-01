@@ -1,0 +1,463 @@
+{% extends "base.html" %}
+{% block title %}Onboard WAN Link — Frampol NOC{% endblock %}
+{% block content %}
+<h1>Onboard WAN Link</h1>
+<div class="wizard-steps" id="wizard-steps">
+  <div class="wizard-step" data-step="1">1. Customer &amp; Location</div>
+  <div class="wizard-step" data-step="2">2. WAN Information</div>
+  <div class="wizard-step" data-step="3">3. Monitoring</div>
+  <div class="wizard-step" data-step="4">4. SNMP Interface Discovery</div>
+  <div class="wizard-step" data-step="5">5. Review</div>
+</div>
+<div id="notice-area"></div>
+
+<div class="panel step-panel" data-step="1">
+  <h2>Customer &amp; Location</h2>
+  <div class="form-grid">
+    <div class="form-field">
+      <label>Customer</label>
+      <select id="sel-customer"><option value="">— select —</option></select>
+    </div>
+    <div class="form-field">
+      <label>New customer name</label>
+      <div style="display:flex;gap:6px">
+        <input id="new-customer-name" placeholder="e.g. PCD" />
+        <button class="btn" id="btn-new-customer">Create</button>
+      </div>
+    </div>
+    <div class="form-field">
+      <label>City / Town</label>
+      <select id="sel-city" disabled><option value="">— select customer first —</option></select>
+    </div>
+    <div class="form-field">
+      <label>New city name</label>
+      <div style="display:flex;gap:6px">
+        <input id="new-city-name" placeholder="e.g. Harare" />
+        <button class="btn" id="btn-new-city">Create</button>
+      </div>
+    </div>
+    <div class="form-field">
+      <label>Suburb / Area (optional)</label>
+      <select id="sel-suburb" disabled><option value="">— none —</option></select>
+    </div>
+    <div class="form-field">
+      <label>New suburb name</label>
+      <div style="display:flex;gap:6px">
+        <input id="new-suburb-name" placeholder="e.g. New Ardbennie" />
+        <button class="btn" id="btn-new-suburb">Create</button>
+      </div>
+    </div>
+    <div class="form-field">
+      <label>Branch</label>
+      <select id="sel-branch" disabled><option value="">— select city first —</option></select>
+    </div>
+  </div>
+  <h3 style="margin-top:18px">New Branch</h3>
+  <div class="form-grid">
+    <div class="form-field"><label>Branch name</label><input id="new-branch-name" placeholder="e.g. Head Office" /></div>
+    <div class="form-field"><label>Physical address</label><input id="new-branch-address" /></div>
+    <div class="form-field"><label>Latitude</label><input id="new-branch-lat" type="text" inputmode="decimal" placeholder="-17.8153 or 17.8153S" /></div>
+    <div class="form-field"><label>Longitude</label><input id="new-branch-lng" type="text" inputmode="decimal" placeholder="31.0955 or 31.0955E" /></div>
+    <div class="form-field full"><button class="btn" id="btn-new-branch">Create Branch</button></div>
+  </div>
+  <div class="quick-actions" style="margin-top:16px">
+    <button class="btn primary" id="step1-next">Next</button>
+  </div>
+</div>
+
+<div class="panel step-panel" data-step="2" style="display:none">
+  <h2>WAN Information</h2>
+  <div class="form-grid">
+    <div class="form-field">
+      <label>ISP</label>
+      <select id="sel-isp"><option value="">— none —</option></select>
+    </div>
+    <div class="form-field">
+      <label>New ISP name</label>
+      <div style="display:flex;gap:6px">
+        <input id="new-isp-name" placeholder="e.g. Liquid" />
+        <button class="btn" id="btn-new-isp">Create</button>
+      </div>
+    </div>
+    <div class="form-field"><label>Circuit capacity (Mbps)</label><input id="circuit-capacity" type="number" min="1" value="100" /></div>
+    <div class="form-field">
+      <label>Role</label>
+      <select id="wan-role">
+        <option value="primary">Primary</option>
+        <option value="backup">Backup</option>
+        <option value="failover">Failover</option>
+        <option value="load_balanced">Load Balanced</option>
+      </select>
+    </div>
+    <div class="form-field"><label>Public IP</label><input id="public-ip" placeholder="169.239.24.126" /></div>
+    <div class="form-field"><label>Device vendor</label><input id="device-vendor" placeholder="Fortinet" /></div>
+    <div class="form-field"><label>Device model</label><input id="device-model" placeholder="FortiGate 100F" /></div>
+    <div class="form-field full"><label>Notes</label><textarea id="wan-notes" rows="2"></textarea></div>
+  </div>
+  <div class="quick-actions" style="margin-top:16px">
+    <button class="btn" id="step2-back">Back</button>
+    <button class="btn primary" id="step2-next">Next</button>
+  </div>
+</div>
+
+<div class="panel step-panel" data-step="3" style="display:none">
+  <h2>Monitoring</h2>
+  <h3>ICMP</h3>
+  <div class="form-grid">
+    <div class="form-field checkbox"><input type="checkbox" id="icmp-enabled" /><label>Enable ICMP monitoring</label></div>
+    <div class="form-field"><label>ICMP target IP</label><input id="icmp-target" /></div>
+  </div>
+  <h3 style="margin-top:16px">SNMP</h3>
+  <div class="form-grid">
+    <div class="form-field checkbox"><input type="checkbox" id="snmp-enabled" /><label>Enable SNMP monitoring</label></div>
+    <div class="form-field"><label>SNMP target IP</label><input id="snmp-target" /></div>
+    <div class="form-field">
+      <label>SNMP version</label>
+      <select id="snmp-version"><option value="v2c">v2c</option><option value="v3" disabled>v3 (coming soon)</option></select>
+    </div>
+    <div class="form-field">
+      <label>SNMP credential</label>
+      <select id="sel-credential"><option value="">— select —</option></select>
+    </div>
+    <div class="form-field full">
+      <label>New credential (name + community string)</label>
+      <div style="display:flex;gap:6px">
+        <input id="new-cred-name" placeholder="e.g. Frampol Default v2c" style="flex:1" />
+        <input id="new-cred-community" type="password" placeholder="community string" style="flex:1" />
+        <button class="btn" id="btn-new-cred">Create</button>
+      </div>
+    </div>
+  </div>
+  <div class="quick-actions" style="margin-top:16px">
+    <button class="btn" id="step3-back">Back</button>
+    <button class="btn primary" id="step3-next">Next</button>
+  </div>
+</div>
+
+<div class="panel step-panel" data-step="4" style="display:none">
+  <h2>SNMP Interface Discovery</h2>
+  <div class="quick-actions" style="margin-bottom:12px">
+    <button class="btn primary" id="btn-discover">Discover Interfaces</button>
+  </div>
+  <div id="discovery-area" class="empty-state">Click "Discover Interfaces" to query the target device over SNMP.</div>
+  <div class="quick-actions" style="margin-top:16px">
+    <button class="btn" id="step4-back">Back</button>
+    <button class="btn primary" id="step4-next" disabled>Next</button>
+  </div>
+</div>
+
+<div class="panel step-panel" data-step="5" style="display:none">
+  <h2>Review</h2>
+  <div id="review-area"></div>
+  <div class="quick-actions" style="margin-top:16px">
+    <button class="btn" id="step5-back">Back</button>
+    <button class="btn primary" id="btn-finish">Finish — Go to Branch Overview</button>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const state = { customerId: null, cityId: null, suburbId: null, branchId: null, isp: null, wanLinkId: null, selectedIfIndex: null, snmpEnabled: false };
+
+function notice(message, type = "error") {
+  document.getElementById("notice-area").innerHTML = `<div class="notice ${type}">${message}</div>`;
+}
+function clearNotice() { document.getElementById("notice-area").innerHTML = ""; }
+
+function showStep(n) {
+  document.querySelectorAll(".step-panel").forEach(p => p.style.display = (parseInt(p.dataset.step) === n) ? "block" : "none");
+  document.querySelectorAll(".wizard-step").forEach(s => {
+    const step = parseInt(s.dataset.step);
+    s.classList.toggle("active", step === n);
+    s.classList.toggle("done", step < n);
+  });
+}
+
+function parseCoordinate(raw, positiveLetter, negativeLetter) {
+  if (!raw) return NaN;
+  const match = raw.trim().toUpperCase().match(/^(-?\d+(?:\.\d+)?)\s*([NSEW]?)$/);
+  if (!match) return NaN;
+  let value = parseFloat(match[1]);
+  if (match[2] === negativeLetter) value = -Math.abs(value);
+  else if (match[2] === positiveLetter) value = Math.abs(value);
+  return value;
+}
+
+function populateSelect(sel, items, valueKey, labelKey, placeholder) {
+  sel.innerHTML = `<option value="">${placeholder}</option>` + items.map(i => `<option value="${i[valueKey]}">${i[labelKey]}</option>`).join("");
+}
+
+async function refreshCustomers(selectId) {
+  const customers = await api("/api/customers");
+  populateSelect(document.getElementById("sel-customer"), customers, "id", "name", "— select —");
+  if (selectId) document.getElementById("sel-customer").value = selectId;
+}
+async function refreshCities(customerId, selectId) {
+  const sel = document.getElementById("sel-city");
+  if (!customerId) { sel.disabled = true; sel.innerHTML = '<option value="">— select customer first —</option>'; return; }
+  const cities = await api(`/api/cities?customer_id=${customerId}`);
+  sel.disabled = false;
+  populateSelect(sel, cities, "id", "name", "— select —");
+  if (selectId) sel.value = selectId;
+}
+async function refreshSuburbs(cityId, selectId) {
+  const sel = document.getElementById("sel-suburb");
+  if (!cityId) { sel.disabled = true; sel.innerHTML = '<option value="">— select city first —</option>'; return; }
+  const suburbs = await api(`/api/suburbs?city_id=${cityId}`);
+  sel.disabled = false;
+  populateSelect(sel, suburbs, "id", "name", "— none —");
+  if (selectId) sel.value = selectId;
+}
+async function refreshBranches(cityId, suburbId, selectId) {
+  const sel = document.getElementById("sel-branch");
+  if (!cityId) { sel.disabled = true; sel.innerHTML = '<option value="">— select city first —</option>'; return; }
+  const qs = suburbId ? `city_id=${cityId}&suburb_id=${suburbId}` : `city_id=${cityId}`;
+  const branches = await api(`/api/branches?${qs}`);
+  sel.disabled = false;
+  populateSelect(sel, branches, "id", "name", "— select —");
+  if (selectId) sel.value = selectId;
+}
+async function refreshIsps(selectId) {
+  const isps = await api("/api/isps");
+  populateSelect(document.getElementById("sel-isp"), isps, "id", "name", "— none —");
+  if (selectId) document.getElementById("sel-isp").value = selectId;
+}
+async function refreshCredentials(selectId) {
+  const creds = await api("/api/snmp-credentials");
+  populateSelect(document.getElementById("sel-credential"), creds, "id", "name", "— select —");
+  if (selectId) document.getElementById("sel-credential").value = selectId;
+}
+
+document.getElementById("sel-customer").addEventListener("change", async (e) => {
+  state.customerId = e.target.value || null;
+  state.cityId = null; state.suburbId = null; state.branchId = null;
+  await refreshCities(state.customerId);
+  document.getElementById("sel-suburb").disabled = true;
+  document.getElementById("sel-branch").disabled = true;
+});
+document.getElementById("btn-new-customer").addEventListener("click", async () => {
+  const name = document.getElementById("new-customer-name").value.trim();
+  if (!name) return;
+  try {
+    const c = await api("/api/customers", { method: "POST", body: { name } });
+    document.getElementById("new-customer-name").value = "";
+    await refreshCustomers(c.id);
+    document.getElementById("sel-customer").dispatchEvent(new Event("change"));
+  } catch (e) { notice(e.message); }
+});
+
+document.getElementById("sel-city").addEventListener("change", async (e) => {
+  state.cityId = e.target.value || null;
+  state.suburbId = null; state.branchId = null;
+  await refreshSuburbs(state.cityId);
+  await refreshBranches(state.cityId, null);
+});
+document.getElementById("btn-new-city").addEventListener("click", async () => {
+  if (!state.customerId) { notice("Select or create a customer first"); return; }
+  const name = document.getElementById("new-city-name").value.trim();
+  if (!name) return;
+  try {
+    const c = await api("/api/cities", { method: "POST", body: { customer_id: parseInt(state.customerId), name } });
+    document.getElementById("new-city-name").value = "";
+    await refreshCities(state.customerId, c.id);
+    document.getElementById("sel-city").dispatchEvent(new Event("change"));
+  } catch (e) { notice(e.message); }
+});
+
+document.getElementById("sel-suburb").addEventListener("change", async (e) => {
+  state.suburbId = e.target.value || null;
+  await refreshBranches(state.cityId, state.suburbId);
+});
+document.getElementById("btn-new-suburb").addEventListener("click", async () => {
+  if (!state.cityId) { notice("Select or create a city first"); return; }
+  const name = document.getElementById("new-suburb-name").value.trim();
+  if (!name) return;
+  try {
+    const s = await api("/api/suburbs", { method: "POST", body: { city_id: parseInt(state.cityId), name } });
+    document.getElementById("new-suburb-name").value = "";
+    await refreshSuburbs(state.cityId, s.id);
+    document.getElementById("sel-suburb").dispatchEvent(new Event("change"));
+  } catch (e) { notice(e.message); }
+});
+
+document.getElementById("sel-branch").addEventListener("change", (e) => { state.branchId = e.target.value || null; });
+document.getElementById("btn-new-branch").addEventListener("click", async () => {
+  if (!state.customerId || !state.cityId) { notice("Select or create a customer and city first"); return; }
+  const name = document.getElementById("new-branch-name").value.trim();
+  const lat = parseCoordinate(document.getElementById("new-branch-lat").value, "N", "S");
+  const lng = parseCoordinate(document.getElementById("new-branch-lng").value, "E", "W");
+  if (!name || isNaN(lat) || isNaN(lng)) {
+    notice("Branch name, latitude and longitude are required (e.g. -17.8153 or 17.8153S)");
+    return;
+  }
+  try {
+    const b = await api("/api/branches", {
+      method: "POST",
+      body: {
+        customer_id: parseInt(state.customerId), city_id: parseInt(state.cityId),
+        suburb_id: state.suburbId ? parseInt(state.suburbId) : null,
+        name, physical_address: document.getElementById("new-branch-address").value, latitude: lat, longitude: lng,
+      },
+    });
+    await refreshBranches(state.cityId, state.suburbId, b.id);
+    state.branchId = b.id;
+    clearNotice();
+  } catch (e) { notice(e.message); }
+});
+
+document.getElementById("step1-next").addEventListener("click", () => {
+  if (!state.branchId) { notice("Select or create a branch before continuing"); return; }
+  clearNotice();
+  showStep(2);
+});
+
+document.getElementById("btn-new-isp").addEventListener("click", async () => {
+  const name = document.getElementById("new-isp-name").value.trim();
+  if (!name) return;
+  try {
+    const isp = await api("/api/isps", { method: "POST", body: { name } });
+    document.getElementById("new-isp-name").value = "";
+    await refreshIsps(isp.id);
+  } catch (e) { notice(e.message); }
+});
+
+document.getElementById("step2-back").addEventListener("click", () => showStep(1));
+document.getElementById("step2-next").addEventListener("click", () => {
+  const capacity = parseFloat(document.getElementById("circuit-capacity").value);
+  if (!capacity || capacity <= 0) { notice("Circuit capacity is required"); return; }
+  const publicIp = document.getElementById("public-ip").value.trim();
+  if (publicIp && !document.getElementById("icmp-target").value) document.getElementById("icmp-target").value = publicIp;
+  if (publicIp && !document.getElementById("snmp-target").value) document.getElementById("snmp-target").value = publicIp;
+  clearNotice();
+  showStep(3);
+});
+
+document.getElementById("btn-new-cred").addEventListener("click", async () => {
+  const name = document.getElementById("new-cred-name").value.trim();
+  const community = document.getElementById("new-cred-community").value;
+  if (!name || !community) { notice("Credential name and community string are required"); return; }
+  try {
+    const cred = await api("/api/snmp-credentials", { method: "POST", body: { name, version: "v2c", community } });
+    document.getElementById("new-cred-name").value = "";
+    document.getElementById("new-cred-community").value = "";
+    await refreshCredentials(cred.id);
+    clearNotice();
+  } catch (e) { notice(e.message); }
+});
+
+document.getElementById("snmp-enabled").addEventListener("change", (e) => {
+  if (e.target.checked) refreshCredentials();
+});
+
+document.getElementById("step3-back").addEventListener("click", () => showStep(2));
+document.getElementById("step3-next").addEventListener("click", async () => {
+  const icmpEnabled = document.getElementById("icmp-enabled").checked;
+  const snmpEnabled = document.getElementById("snmp-enabled").checked;
+  if (icmpEnabled && !document.getElementById("icmp-target").value.trim()) { notice("ICMP target IP is required"); return; }
+  if (snmpEnabled && (!document.getElementById("snmp-target").value.trim() || !document.getElementById("sel-credential").value)) {
+    notice("SNMP target IP and credential are required"); return;
+  }
+  state.snmpEnabled = snmpEnabled;
+
+  const payload = {
+    branch_id: parseInt(state.branchId),
+    isp_id: document.getElementById("sel-isp").value ? parseInt(document.getElementById("sel-isp").value) : null,
+    circuit_capacity_bps: Math.round(parseFloat(document.getElementById("circuit-capacity").value) * 1_000_000),
+    role: document.getElementById("wan-role").value,
+    public_ip: document.getElementById("public-ip").value.trim() || null,
+    device_vendor: document.getElementById("device-vendor").value.trim() || null,
+    device_model: document.getElementById("device-model").value.trim() || null,
+    notes: document.getElementById("wan-notes").value.trim() || null,
+    icmp_enabled: icmpEnabled,
+    icmp_target_ip: icmpEnabled ? document.getElementById("icmp-target").value.trim() : null,
+    snmp_enabled: snmpEnabled,
+    snmp_target_ip: snmpEnabled ? document.getElementById("snmp-target").value.trim() : null,
+    snmp_version: snmpEnabled ? document.getElementById("snmp-version").value : null,
+    snmp_credential_id: snmpEnabled ? parseInt(document.getElementById("sel-credential").value) : null,
+  };
+
+  try {
+    if (!state.wanLinkId) {
+      const wan = await api("/api/wan-links", { method: "POST", body: payload });
+      state.wanLinkId = wan.id;
+    }
+    clearNotice();
+    if (snmpEnabled) {
+      showStep(4);
+    } else {
+      renderReview();
+      showStep(5);
+    }
+  } catch (e) { notice(e.message); }
+});
+
+document.getElementById("btn-discover").addEventListener("click", async () => {
+  const area = document.getElementById("discovery-area");
+  area.innerHTML = '<div class="empty-state">Querying device over SNMP…</div>';
+  try {
+    const interfaces = await api(`/api/wan-links/${state.wanLinkId}/discover`, { method: "POST" });
+    if (interfaces.length === 0) {
+      area.innerHTML = '<div class="empty-state">No interfaces returned.</div>';
+      return;
+    }
+    area.innerHTML = `
+      <table class="data-table">
+        <thead><tr><th>ifIndex</th><th>Name</th><th>Description</th><th>Alias</th><th>IP</th><th>Speed</th><th>Admin</th><th>Oper</th><th></th></tr></thead>
+        <tbody>
+          ${interfaces.map(i => `
+            <tr class="selectable ${i.suggested_match ? "suggested" : ""}" id="iface-row-${i.if_index}">
+              <td>${i.if_index}</td>
+              <td>${i.name || "—"}</td>
+              <td>${i.description || "—"}</td>
+              <td>${i.alias || "—"}${i.suggested_match ? ' <span class="badge-status badge-info">suggested match</span>' : ""}</td>
+              <td>${i.ip_address || "—"}</td>
+              <td>${i.speed_bps ? fmtBps(i.speed_bps) : "—"}</td>
+              <td><span class="badge-status ${i.admin_status === "up" ? "badge-up" : "badge-down"}">${i.admin_status || "?"}</span></td>
+              <td><span class="badge-status ${i.oper_status === "up" ? "badge-up" : "badge-down"}">${i.oper_status || "?"}</span></td>
+              <td><button class="btn" onclick="selectInterface(${i.if_index})">Select</button></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+    clearNotice();
+  } catch (e) {
+    area.innerHTML = '<div class="empty-state">Discovery failed.</div>';
+    notice(e.message);
+  }
+});
+
+async function selectInterface(ifIndex) {
+  try {
+    await api(`/api/wan-links/${state.wanLinkId}/select-interface`, { method: "POST", body: { if_index: ifIndex } });
+    state.selectedIfIndex = ifIndex;
+    document.querySelectorAll("#discovery-area tr.selectable").forEach(r => r.classList.remove("selected-row"));
+    document.getElementById(`iface-row-${ifIndex}`).classList.add("selected-row");
+    document.getElementById("step4-next").disabled = false;
+    clearNotice();
+  } catch (e) { notice(e.message); }
+}
+
+document.getElementById("step4-back").addEventListener("click", () => showStep(3));
+document.getElementById("step4-next").addEventListener("click", () => { renderReview(); showStep(5); });
+
+function renderReview() {
+  document.getElementById("review-area").innerHTML = `
+    <div class="empty-state" style="text-align:left">
+      WAN Link #${state.wanLinkId} has been created and is now polling in the background
+      (SNMP every 60s, ICMP every 30s, per the configured intervals).
+      Selected interface: ${state.selectedIfIndex ?? "n/a (SNMP disabled)"}.
+    </div>
+  `;
+}
+
+document.getElementById("step5-back").addEventListener("click", () => showStep(state.snmpEnabled ? 4 : 3));
+document.getElementById("btn-finish").addEventListener("click", () => { window.location.href = `/branches/${state.branchId}`; });
+
+(async () => {
+  await refreshCustomers();
+  await refreshIsps();
+  showStep(1);
+})();
+</script>
+{% endblock %}

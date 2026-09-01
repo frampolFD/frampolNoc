@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Branch WAN Overview — Frampol NOC{% endblock %}
+{% block content %}
+<div class="crumb" id="crumb">Loading…</div>
+<h1 id="branch-title">Branch WAN Overview</h1>
+<div id="wan-list"><div class="empty-state">Loading WAN links…</div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+const BRANCH_ID = {{ branch_id }};
+const charts = {};
+
+function pingBoxClass(latest) {
+  if (latest.availability === true) return "up";
+  if (latest.availability === false) return "down";
+  return "";
+}
+
+function wanCardHtml(wan) {
+  return `
+    <div class="wan-card health-${wan.health}" id="wan-card-${wan.id}">
+      <div class="wan-card-header">
+        <div class="wan-card-title">
+          <span class="health-dot health-${wan.health}"></span>
+          <a href="/wan-links/${wan.id}">${escapeHtml(wan.name_generated)}</a>
+        </div>
+        <span class="isp-badge">${escapeHtml(wan.isp_name || "No ISP")}</span>
+      </div>
+      <div class="wan-metrics">
+        <div class="metric"><div class="label">Capacity</div><div class="value">${fmtBps(wan.circuit_capacity_bps)}</div></div>
+        <div class="metric"><div class="label">RX</div><div class="value">${fmtBps(wan.latest.rx_bps)}</div></div>
+        <div class="metric"><div class="label">TX</div><div class="value">${fmtBps(wan.latest.tx_bps)}</div></div>
+        <div class="metric"><div class="label">Total</div><div class="value">${fmtBps(wan.latest.total_bps)}</div></div>
+        <div class="metric"><div class="label">Utilisation</div><div class="value">${fmtPercent(wan.latest.utilisation_percent)}</div></div>
+        <div class="metric"><div class="label">Latency</div><div class="value">${fmtMs(wan.latest.latency_ms)}</div></div>
+        <div class="metric"><div class="label">Loss</div><div class="value">${fmtPercent(wan.latest.packet_loss_percent)}</div></div>
+      </div>
+      <div class="wan-body">
+        <div class="wan-graph"><canvas id="chart-${wan.id}"></canvas></div>
+        <div class="ping-box ${pingBoxClass(wan.latest)}" onclick="window.location.href='/wan-links/${wan.id}'">
+          <div>PING</div>
+          <div class="ping-status">${wan.latest.availability === true ? "UP" : wan.latest.availability === false ? "DOWN" : "—"}</div>
+          <div style="color:var(--brand-grey);font-size:11px">${fmtMs(wan.latest.latency_ms)}</div>
+        </div>
+      </div>
+      <div class="quick-actions">
+        <button class="btn" onclick="pingNow(${wan.id})">Ping Now</button>
+        <button class="btn" onclick="pollNow(${wan.id})" ${wan.selected_if_index === null ? "disabled" : ""}>Poll SNMP Now</button>
+        <a class="btn" href="/wan-links/${wan.id}">Full Graph</a>
+        <a class="btn" href="/wan-links/${wan.id}#alerts">Alert History</a>
+        <button class="btn" onclick="copyWanInfo(${wan.id})">Copy WAN Info</button>
+        ${wan.public_ip ? `<a class="btn" href="http://${wan.public_ip}" target="_blank" rel="noopener">Open Firewall</a>` : ""}
+        ${wan.public_ip ? `<a class="btn" href="http://${wan.public_ip}" target="_blank" rel="noopener">Open Public IP</a>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+let wanCache = {};
+
+async function loadBreadcrumb() {
+  const bc = await api(`/api/branches/${BRANCH_ID}/breadcrumb`);
+  const parts = [bc.customer, bc.city, bc.suburb, bc.branch].filter(Boolean);
+  document.getElementById("crumb").textContent = parts.join(" > ");
+  document.getElementById("branch-title").textContent = bc.branch + " — WAN Overview";
+}
+
+async function loadWanLinks(initial) {
+  const wans = await api(`/api/branches/${BRANCH_ID}/wan-links`);
+  wanCache = Object.fromEntries(wans.map(w => [w.id, w]));
+  const listEl = document.getElementById("wan-list");
+  if (wans.length === 0) {
+    listEl.innerHTML = '<div class="empty-state">No WAN links at this branch yet. <a href="/onboard">Onboard one</a>.</div>';
+    return;
+  }
+  if (initial) {
+    listEl.innerHTML = wans.map(wanCardHtml).join("");
+    for (const wan of wans) {
+      await initChart(wan.id);
+    }
+  } else {
+    for (const wan of wans) {
+      updateCardMetrics(wan);
+    }
+  }
+}
+
+function updateCardMetrics(wan) {
+  const card = document.getElementById(`wan-card-${wan.id}`);
+  if (!card) return;
+  card.className = `wan-card health-${wan.health}`;
+  const dot = card.querySelector(".health-dot");
+  if (dot) dot.className = `health-dot health-${wan.health}`;
+  const metrics = card.querySelectorAll(".wan-metrics .value");
+  if (metrics.length >= 6) {
+    metrics[1].textContent = fmtBps(wan.latest.rx_bps);
+    metrics[2].textContent = fmtBps(wan.latest.tx_bps);
+    metrics[3].textContent = fmtBps(wan.latest.total_bps);
+    metrics[4].textContent = fmtPercent(wan.latest.utilisation_percent);
+    metrics[5].textContent = fmtMs(wan.latest.latency_ms);
+  }
+}
+
+async function initChart(wanId) {
+  const measurements = await api(`/api/wan-links/${wanId}/measurements?range=1h`);
+  const ctx = document.getElementById(`chart-${wanId}`);
+  if (!ctx) return;
+  charts[wanId] = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: measurements.map(m => new Date(m.timestamp).toLocaleTimeString()),
+      datasets: [
+        { label: "RX", data: measurements.map(m => m.rx_bps), borderColor: "#2e7d32", pointRadius: 0, tension: 0.2 },
+        { label: "TX", data: measurements.map(m => m.tx_bps), borderColor: "#7a1f2e", pointRadius: 0, tension: 0.2 },
+        { label: "Total", data: measurements.map(m => m.total_bps), borderColor: "#5c5c5c", pointRadius: 0, tension: 0.2, borderDash: [4, 3] },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: false,
+      scales: { y: { ticks: { callback: (v) => fmtBps(v) } } },
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 10 } } } },
+    },
+  });
+}
+
+async function refreshChart(wanId) {
+  const chart = charts[wanId];
+  if (!chart) return;
+  const measurements = await api(`/api/wan-links/${wanId}/measurements?range=1h`);
+  chart.data.labels = measurements.map(m => new Date(m.timestamp).toLocaleTimeString());
+  chart.data.datasets[0].data = measurements.map(m => m.rx_bps);
+  chart.data.datasets[1].data = measurements.map(m => m.tx_bps);
+  chart.data.datasets[2].data = measurements.map(m => m.total_bps);
+  chart.update();
+}
+
+async function pingNow(wanId) {
+  await api(`/api/wan-links/${wanId}/ping-now`, { method: "POST" });
+  await refreshAll();
+}
+async function pollNow(wanId) {
+  await api(`/api/wan-links/${wanId}/poll-now`, { method: "POST" });
+  await refreshAll();
+}
+
+function copyWanInfo(wanId) {
+  const wan = wanCache[wanId];
+  if (!wan) return;
+  const text = `${wan.name_generated}\nSNMP: ${wan.snmp_target_ip || "n/a"} (ifIndex ${wan.selected_if_index ?? "n/a"})\nICMP: ${wan.icmp_target_ip || "n/a"}\nPublic IP: ${wan.public_ip || "n/a"}`;
+  navigator.clipboard.writeText(text);
+}
+
+function escapeHtml(s) {
+  if (!s) return "";
+  const div = document.createElement("div");
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+async function refreshAll() {
+  await loadWanLinks(false);
+  for (const id of Object.keys(charts)) {
+    await refreshChart(id);
+  }
+}
+
+(async () => {
+  await loadBreadcrumb();
+  await loadWanLinks(true);
+  setInterval(refreshAll, 10000);
+})();
+</script>
+{% endblock %}

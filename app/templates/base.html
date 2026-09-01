@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{% block title %}Frampol NOC{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script src="/static/vendor/chart.umd.js"></script>
+  <script src="/static/js/api.js"></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="app-shell">
+    <div class="topnav">
+      <a href="/" class="brand">FRAMPOL <span>NOC</span></a>
+      <div class="spacer"></div>
+      <a href="/onboard" class="nav-link">+ Onboard WAN</a>
+      <a href="/" class="nav-link">Dashboard</a>
+      <a href="/settings" class="nav-link" id="settings-link" style="display:none">Settings</a>
+      <button class="nav-link" id="logout-btn">Logout</button>
+    </div>
+    <div class="explorer">
+      <div id="explorer-tree"><div class="empty-state">Loading…</div></div>
+    </div>
+    <div class="main-content">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+  <script src="/static/js/explorer.js"></script>
+  <script>
+    document.getElementById("logout-btn").addEventListener("click", async () => {
+      await api("/api/auth/logout", { method: "POST" });
+      window.location.href = "/login";
+    });
+    (async () => {
+      try {
+        const me = await api("/api/auth/me");
+        if (me.role === "admin") document.getElementById("settings-link").style.display = "";
+      } catch (e) {}
+    })();
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

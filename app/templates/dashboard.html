@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Frampol NOC{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<div class="card-row" id="stat-cards">
+  <div class="stat-card"><div class="label">Customers</div><div class="value" id="stat-customers">—</div></div>
+  <div class="stat-card"><div class="label">Total WAN Links</div><div class="value" id="stat-total">—</div></div>
+  <div class="stat-card online"><div class="label">Online</div><div class="value" id="stat-online">—</div></div>
+  <div class="stat-card warning"><div class="label">Warning</div><div class="value" id="stat-warning">—</div></div>
+  <div class="stat-card offline"><div class="label">Offline</div><div class="value" id="stat-offline">—</div></div>
+  <div class="stat-card"><div class="label">Monitoring Disabled</div><div class="value" id="stat-disabled">—</div></div>
+</div>
+
+<div class="panel">
+  <h2>Recent Alerts</h2>
+  <table class="data-table">
+    <thead><tr><th>Started</th><th>Type</th><th>Severity</th><th>Message</th><th>Status</th></tr></thead>
+    <tbody id="alerts-body"><tr><td colspan="5" class="empty-state">Loading…</td></tr></tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <div class="empty-state">Select a customer, city, suburb or branch from the Explorer on the left to view WAN links.
+  Use <a href="/onboard">+ Onboard WAN</a> to add a new WAN link.</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadDashboard() {
+  const data = await api("/api/dashboard");
+  document.getElementById("stat-customers").textContent = data.total_customers;
+  document.getElementById("stat-total").textContent = data.total_wan_links;
+  document.getElementById("stat-online").textContent = data.online;
+  document.getElementById("stat-warning").textContent = data.warning;
+  document.getElementById("stat-offline").textContent = data.offline;
+  document.getElementById("stat-disabled").textContent = data.monitoring_disabled;
+
+  const body = document.getElementById("alerts-body");
+  if (data.recent_alerts.length === 0) {
+    body.innerHTML = '<tr><td colspan="5" class="empty-state">No alerts yet</td></tr>';
+    return;
+  }
+  body.innerHTML = data.recent_alerts.map(a => `
+    <tr class="alert-row ${a.severity}">
+      <td>${new Date(a.started_at).toLocaleString()}</td>
+      <td>${a.alert_type}</td>
+      <td>${a.severity}</td>
+      <td>${a.message}</td>
+      <td>${a.ended_at ? "resolved" : "open"}</td>
+    </tr>
+  `).join("");
+}
+loadDashboard();
+setInterval(loadDashboard, 15000);
+</script>
+{% endblock %}
