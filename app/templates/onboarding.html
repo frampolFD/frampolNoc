@@ -79,7 +79,11 @@
         <button class="btn" id="btn-new-isp">Create</button>
       </div>
     </div>
-    <div class="form-field"><label>Circuit capacity (Mbps)</label><input id="circuit-capacity" type="number" min="1" value="100" /></div>
+    <div class="form-field">
+      <label>Circuit capacity (Mbps)</label>
+      <input id="circuit-capacity" type="number" min="1" placeholder="e.g. 100" />
+      <span style="color:var(--brand-grey);font-size:11px">Optional for now — only required once ICMP or SNMP monitoring is enabled on the next step.</span>
+    </div>
     <div class="form-field">
       <label>Role</label>
       <select id="wan-role">
@@ -327,8 +331,9 @@ document.getElementById("btn-new-isp").addEventListener("click", async () => {
 
 document.getElementById("step2-back").addEventListener("click", () => showStep(1));
 document.getElementById("step2-next").addEventListener("click", () => {
-  const capacity = parseFloat(document.getElementById("circuit-capacity").value);
-  if (!capacity || capacity <= 0) { notice("Circuit capacity is required"); return; }
+  // Capacity is optional here — an inventory-only/not-yet-configured WAN
+  // may be created without one. It's only required if monitoring gets
+  // enabled on the next step (enforced there).
   const publicIp = document.getElementById("public-ip").value.trim();
   if (publicIp && !document.getElementById("icmp-target").value) document.getElementById("icmp-target").value = publicIp;
   if (publicIp && !document.getElementById("snmp-target").value) document.getElementById("snmp-target").value = publicIp;
@@ -365,6 +370,18 @@ document.getElementById("monitoring-disabled").addEventListener("change", (e) =>
   snmpBox.disabled = disabled;
 });
 
+function readCapacityBps() {
+  // Blank field -> null (inventory-only WAN). Never send NaN, and never
+  // substitute 0 for an invalid/non-positive entry — treat it the same as
+  // blank; the "required once monitoring is enabled" check below is what
+  // actually surfaces the problem to the engineer when it matters.
+  const raw = document.getElementById("circuit-capacity").value.trim();
+  if (!raw) return null;
+  const mbps = parseFloat(raw);
+  if (!Number.isFinite(mbps) || mbps <= 0) return null;
+  return Math.round(mbps * 1_000_000);
+}
+
 document.getElementById("step3-back").addEventListener("click", () => showStep(2));
 document.getElementById("step3-next").addEventListener("click", async () => {
   const monitoringDisabled = document.getElementById("monitoring-disabled").checked;
@@ -374,12 +391,17 @@ document.getElementById("step3-next").addEventListener("click", async () => {
   if (snmpEnabled && (!document.getElementById("snmp-target").value.trim() || !document.getElementById("sel-credential").value)) {
     notice("SNMP target IP and credential are required"); return;
   }
+  const capacityBps = readCapacityBps();
+  if ((icmpEnabled || snmpEnabled) && capacityBps === null) {
+    notice("Circuit capacity is required once ICMP or SNMP monitoring is enabled");
+    return;
+  }
   state.snmpEnabled = snmpEnabled;
 
   const payload = {
     branch_id: parseInt(state.branchId),
     isp_id: document.getElementById("sel-isp").value ? parseInt(document.getElementById("sel-isp").value) : null,
-    circuit_capacity_bps: Math.round(parseFloat(document.getElementById("circuit-capacity").value) * 1_000_000),
+    circuit_capacity_bps: capacityBps,
     role: document.getElementById("wan-role").value,
     public_ip: document.getElementById("public-ip").value.trim() || null,
     device_vendor: document.getElementById("device-vendor").value.trim() || null,

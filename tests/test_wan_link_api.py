@@ -49,3 +49,58 @@ def test_wan_link_name_omits_capacity_when_inventory_only(client):
     assert resp.status_code == 200
     assert "Mbps" not in resp.json()["name_generated"]
     assert "Gbps" not in resp.json()["name_generated"]
+
+
+def test_monitoring_disabled_rejects_icmp_enabled(client):
+    branch_id = _make_branch(client)
+    resp = client.post(
+        "/api/wan-links",
+        json={
+            "branch_id": branch_id,
+            "monitoring_disabled": True,
+            "icmp_enabled": True,
+            "icmp_target_ip": "10.0.0.1",
+            "circuit_capacity_bps": 100_000_000,
+        },
+    )
+    assert resp.status_code == 422
+
+
+def test_monitoring_disabled_rejects_snmp_enabled(client):
+    branch_id = _make_branch(client)
+    resp = client.post(
+        "/api/wan-links",
+        json={
+            "branch_id": branch_id,
+            "monitoring_disabled": True,
+            "snmp_enabled": True,
+            "snmp_target_ip": "10.0.0.1",
+            "snmp_credential_id": 1,
+            "circuit_capacity_bps": 100_000_000,
+        },
+    )
+    assert resp.status_code == 422
+
+
+def test_monitoring_disabled_alone_is_accepted(client):
+    branch_id = _make_branch(client)
+    resp = client.post("/api/wan-links", json={"branch_id": branch_id, "monitoring_disabled": True})
+    assert resp.status_code == 200
+
+
+def test_circuit_capacity_zero_is_rejected(client):
+    branch_id = _make_branch(client)
+    resp = client.post("/api/wan-links", json={"branch_id": branch_id, "circuit_capacity_bps": 0})
+    assert resp.status_code == 422
+
+
+def test_circuit_capacity_negative_is_rejected(client):
+    branch_id = _make_branch(client)
+    resp = client.post("/api/wan-links", json={"branch_id": branch_id, "circuit_capacity_bps": -100})
+    assert resp.status_code == 422
+
+
+def test_circuit_capacity_positive_is_accepted(client):
+    branch_id = _make_branch(client)
+    resp = client.post("/api/wan-links", json={"branch_id": branch_id, "circuit_capacity_bps": 1})
+    assert resp.status_code == 200

@@ -89,7 +89,9 @@ class WANLinkCreate(BaseModel):
     branch_id: int
     isp_id: int | None = None
     circuit_capacity_bps: int | None = Field(
-        None, description="Required once ICMP or SNMP monitoring is enabled; may be left unset for inventory-only links"
+        None,
+        gt=0,
+        description="Required once ICMP or SNMP monitoring is enabled; may be left unset for inventory-only links",
     )
     role: WANRole = WANRole.primary
     public_ip: str | None = None

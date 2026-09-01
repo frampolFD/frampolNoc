@@ -95,6 +95,8 @@ def create_wan_link(payload: WANLinkCreate, db: Session = Depends(get_db)):
     branch = db.get(Branch, payload.branch_id)
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
+    if payload.monitoring_disabled and (payload.icmp_enabled or payload.snmp_enabled):
+        raise HTTPException(status_code=422, detail="monitoring_disabled cannot be combined with icmp_enabled or snmp_enabled")
     isp = db.get(ISP, payload.isp_id) if payload.isp_id else None
     if payload.snmp_enabled:
         if not payload.snmp_target_ip or not payload.snmp_credential_id:

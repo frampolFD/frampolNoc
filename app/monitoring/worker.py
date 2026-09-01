@@ -97,6 +97,23 @@ def _close_alert(db, wan_link_id: int, alert_type: AlertType):
     return existing
 
 
+def _record_failed_snmp_attempt(db, wan_link: WANLink) -> None:
+    """Scheduling bookkeeping for a failed SNMP attempt — missing
+    credential, decryption failure, or the SNMP client itself raising.
+    Records that an attempt happened (so the scheduler respects the normal
+    polling cadence instead of retrying on every 5-second tick) and clears
+    the last-known counters, so the *next successful* poll establishes a
+    fresh baseline rather than computing a rate against stale octets that
+    may be arbitrarily old. A failed SNMP poll says nothing about whether
+    the WAN is up — that's ICMP's job, independently.
+    """
+    state = _get_or_create_poll_state(db, wan_link)
+    state.last_snmp_poll_at = datetime.now(timezone.utc)
+    state.last_in_octets = None
+    state.last_out_octets = None
+    db.commit()
+
+
 def _alert_open(db, wan_link_id: int, alert_type: AlertType) -> bool:
     return (
         db.query(Alert)
@@ -116,7 +133,9 @@ async def poll_icmp_for_wan_link(wan_link_id: int) -> None:
         db = SessionLocal()
         try:
             wan_link = db.get(WANLink, wan_link_id)
-            if not wan_link or not wan_link.icmp_enabled or not wan_link.icmp_target_ip:
+            if not wan_link or wan_link.monitoring_disabled:
+                return
+            if not wan_link.icmp_enabled or not wan_link.icmp_target_ip:
                 return
 
             try:
@@ -195,14 +214,23 @@ async def poll_snmp_for_wan_link(wan_link_id: int) -> None:
         db = SessionLocal()
         try:
             wan_link = db.get(WANLink, wan_link_id)
-            if not wan_link or not wan_link.snmp_enabled or not wan_link.snmp_target_ip or wan_link.selected_if_index is None:
+            if not wan_link or wan_link.monitoring_disabled:
+                return
+            if not wan_link.snmp_enabled or not wan_link.snmp_target_ip or wan_link.selected_if_index is None:
                 return
 
             credential = db.get(SNMPCredential, wan_link.snmp_credential_id) if wan_link.snmp_credential_id else None
             if not credential:
                 logger.warning("wan_link %s has SNMP enabled but no credential configured", wan_link_id)
+                _record_failed_snmp_attempt(db, wan_link)
                 return
-            community = decrypt_secret(credential.encrypted_secret)
+
+            try:
+                community = decrypt_secret(credential.encrypted_secret)
+            except Exception:
+                logger.exception("SNMP credential decryption failed for wan_link %s", wan_link_id)
+                _record_failed_snmp_attempt(db, wan_link)
+                return
 
             try:
                 counters = await snmp_client.poll_interface(
@@ -215,15 +243,7 @@ async def poll_snmp_for_wan_link(wan_link_id: int) -> None:
                 )
             except Exception:
                 logger.exception("SNMP poll failed for wan_link %s", wan_link_id)
-                # Record that an attempt happened even though it failed, so
-                # the scheduler respects the normal polling cadence instead
-                # of treating this target as permanently overdue and
-                # retrying it on every 5-second tick. This is scheduling
-                # bookkeeping only — a failed SNMP poll says nothing about
-                # whether the WAN is up (that's ICMP's job, independently).
-                state = _get_or_create_poll_state(db, wan_link)
-                state.last_snmp_poll_at = datetime.now(timezone.utc)
-                db.commit()
+                _record_failed_snmp_attempt(db, wan_link)
                 return
             finally:
                 del community
@@ -308,6 +328,8 @@ async def _tick() -> None:
         wan_links = db.query(WANLink).all()
         now = datetime.now(timezone.utc)
         for wan_link in wan_links:
+            if wan_link.monitoring_disabled:
+                continue
             state = wan_link.poll_state
 
             if wan_link.icmp_enabled and wan_link.icmp_target_ip:
