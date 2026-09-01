@@ -101,6 +101,14 @@ function updateCardMetrics(wan) {
   }
 }
 
+function trafficDataset(label, measurements, field, color, extra) {
+  const points = trafficPoints(measurements, field);
+  return Object.assign(
+    { label, data: points, borderColor: color, pointRadius: pointRadiusForCount(points.length), tension: 0.2 },
+    extra || {}
+  );
+}
+
 async function initChart(wanId) {
   const measurements = await api(`/api/wan-links/${wanId}/measurements?range=1h`);
   const ctx = document.getElementById(`chart-${wanId}`);
@@ -108,17 +116,19 @@ async function initChart(wanId) {
   charts[wanId] = new Chart(ctx, {
     type: "line",
     data: {
-      labels: measurements.map(m => new Date(m.timestamp).toLocaleTimeString()),
       datasets: [
-        { label: "RX", data: measurements.map(m => m.rx_bps), borderColor: "#2e7d32", pointRadius: 0, tension: 0.2 },
-        { label: "TX", data: measurements.map(m => m.tx_bps), borderColor: "#7a1f2e", pointRadius: 0, tension: 0.2 },
-        { label: "Total", data: measurements.map(m => m.total_bps), borderColor: "#5c5c5c", pointRadius: 0, tension: 0.2, borderDash: [4, 3] },
+        trafficDataset("RX", measurements, "rx_bps", "#2e7d32"),
+        trafficDataset("TX", measurements, "tx_bps", "#7a1f2e"),
+        trafficDataset("Total", measurements, "total_bps", "#5c5c5c", { borderDash: [4, 3] }),
       ],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       animation: false,
-      scales: { y: { ticks: { callback: (v) => fmtBps(v) } } },
+      scales: {
+        x: { type: "linear", ticks: { callback: (v) => new Date(v).toLocaleTimeString() } },
+        y: { ticks: { callback: (v) => fmtBps(v) } },
+      },
       plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 10 } } } },
     },
   });
@@ -128,10 +138,11 @@ async function refreshChart(wanId) {
   const chart = charts[wanId];
   if (!chart) return;
   const measurements = await api(`/api/wan-links/${wanId}/measurements?range=1h`);
-  chart.data.labels = measurements.map(m => new Date(m.timestamp).toLocaleTimeString());
-  chart.data.datasets[0].data = measurements.map(m => m.rx_bps);
-  chart.data.datasets[1].data = measurements.map(m => m.tx_bps);
-  chart.data.datasets[2].data = measurements.map(m => m.total_bps);
+  ["rx_bps", "tx_bps", "total_bps"].forEach((field, i) => {
+    const points = trafficPoints(measurements, field);
+    chart.data.datasets[i].data = points;
+    chart.data.datasets[i].pointRadius = pointRadiusForCount(points.length);
+  });
   chart.update();
 }
 

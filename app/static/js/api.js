@@ -48,3 +48,26 @@ function fmtTime(iso) {
 function healthClass(health) {
   return "health-" + (health || "unknown");
 }
+
+// The /measurements endpoint interleaves independently-scheduled ICMP rows
+// (latency/loss/jitter/availability, traffic fields null) and SNMP rows
+// (rx/tx/total_bps, ICMP fields null) on one timeline. A traffic dataset
+// must only be built from rows where that specific field is a real,
+// finite number — never from an ICMP-only row's null, and never treating
+// non-finite values (NaN/Infinity, which can't happen server-side today
+// but shouldn't silently render as 0 if they ever did) as valid.
+function trafficPoints(measurements, field) {
+  return measurements
+    .filter(m => Number.isFinite(m[field]))
+    .map(m => ({ x: new Date(m.timestamp).getTime(), y: m[field] }));
+}
+
+// A freshly-selected SNMP interface's first successful poll only
+// establishes the counter baseline (no prior sample to diff against, so
+// no rate) — the *second* poll produces the first graphable point. With
+// only one point on the graph there is nothing for a line to connect, so
+// it must render as a visible dot instead of silently vanishing; once a
+// second point arrives a line becomes meaningful and dominates instead.
+function pointRadiusForCount(count) {
+  return count === 1 ? 3 : 0;
+}
