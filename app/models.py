@@ -71,23 +71,37 @@ class Customer(Base):
     created_at: Mapped[object] = mapped_column(UTCDateTime(), server_default=func.now())
     updated_at: Mapped[object] = mapped_column(UTCDateTime(), server_default=func.now(), onupdate=func.now())
 
-    cities: Mapped[list["City"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
+    branches: Mapped[list["Branch"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
 
 
 class City(Base):
+    """Shared geographic reference data (a city/town), NOT owned by any
+    customer — see DECISIONS.md "Shared geographic ownership model". Two
+    different customers routinely have branches in the same city, so this
+    must never be scoped to a customer_id.
+    """
+
     __tablename__ = "cities"
-    __table_args__ = (UniqueConstraint("customer_id", "name", name="uq_city_customer_name"),)
+    __table_args__ = (UniqueConstraint("country_code", "province", "name", name="uq_city_country_province_name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    province: Mapped[str] = mapped_column(String(200), nullable=False)
+    country_code: Mapped[str] = mapped_column(String(2), nullable=False, default="ZW")
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    customer: Mapped["Customer"] = relationship(back_populates="cities")
-    suburbs: Mapped[list["Suburb"]] = relationship(back_populates="city", cascade="all, delete-orphan")
-    branches: Mapped[list["Branch"]] = relationship(back_populates="city", cascade="all, delete-orphan")
+    suburbs: Mapped[list["Suburb"]] = relationship(back_populates="city")
+    # No cascade here: a shared city must never cascade-delete branches
+    # belonging to any customer. The FK itself blocks deleting a City that
+    # still has branches pointing at it.
+    branches: Mapped[list["Branch"]] = relationship(back_populates="city")
 
 
 class Suburb(Base):
+    """Shared geographic reference data (a suburb/area within a city),
+    likewise not owned by any customer."""
+
     __tablename__ = "suburbs"
     __table_args__ = (UniqueConstraint("city_id", "name", name="uq_suburb_city_name"),)
 
@@ -116,7 +130,7 @@ class Branch(Base):
     created_at: Mapped[object] = mapped_column(UTCDateTime(), server_default=func.now())
     updated_at: Mapped[object] = mapped_column(UTCDateTime(), server_default=func.now(), onupdate=func.now())
 
-    customer: Mapped["Customer"] = relationship()
+    customer: Mapped["Customer"] = relationship(back_populates="branches")
     city: Mapped["City"] = relationship(back_populates="branches")
     suburb: Mapped["Suburb"] = relationship(back_populates="branches")
     wan_links: Mapped[list["WANLink"]] = relationship(back_populates="branch", cascade="all, delete-orphan")

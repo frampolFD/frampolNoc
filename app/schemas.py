@@ -20,8 +20,11 @@ class CustomerOut(CustomerIn):
 
 
 class CityIn(BaseModel):
-    customer_id: int
     name: str
+    province: str
+    country_code: str = "ZW"
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 class CityOut(CityIn):

@@ -27,18 +27,20 @@
     </div>
     <div class="form-field">
       <label>City / Town</label>
-      <select id="sel-city" disabled><option value="">— select customer first —</option></select>
+      <select id="sel-city"><option value="">— select —</option></select>
+      <span style="color:var(--brand-grey);font-size:11px">Shared across all customers — not tied to the customer selected above.</span>
     </div>
     <div class="form-field">
-      <label>New city name</label>
+      <label>Add a missing city/town</label>
       <div style="display:flex;gap:6px">
-        <input id="new-city-name" placeholder="e.g. Harare" />
+        <input id="new-city-name" placeholder="Name, e.g. Harare" style="flex:1" />
+        <input id="new-city-province" placeholder="Province, e.g. Harare" style="flex:1" />
         <button class="btn" id="btn-new-city">Create</button>
       </div>
     </div>
     <div class="form-field">
       <label>Suburb / Area (optional)</label>
-      <select id="sel-suburb" disabled><option value="">— none —</option></select>
+      <select id="sel-suburb" disabled><option value="">— select city first —</option></select>
     </div>
     <div class="form-field">
       <label>New suburb name</label>
@@ -49,7 +51,7 @@
     </div>
     <div class="form-field">
       <label>Branch</label>
-      <select id="sel-branch" disabled><option value="">— select city first —</option></select>
+      <select id="sel-branch" disabled><option value="">— select customer and city first —</option></select>
     </div>
   </div>
   <h3 style="margin-top:18px">New Branch</h3>
@@ -200,12 +202,13 @@ async function refreshCustomers(selectId) {
   populateSelect(document.getElementById("sel-customer"), customers, "id", "name", "— select —");
   if (selectId) document.getElementById("sel-customer").value = selectId;
 }
-async function refreshCities(customerId, selectId) {
+async function refreshCities(selectId) {
+  // Cities are shared reference data — the full list loads once,
+  // independent of which customer is selected. Already sorted by
+  // province then name by the API; label as "Name, Province".
   const sel = document.getElementById("sel-city");
-  if (!customerId) { sel.disabled = true; sel.innerHTML = '<option value="">— select customer first —</option>'; return; }
-  const cities = await api(`/api/cities?customer_id=${customerId}`);
-  sel.disabled = false;
-  populateSelect(sel, cities, "id", "name", "— select —");
+  const cities = await api("/api/cities");
+  sel.innerHTML = '<option value="">— select —</option>' + cities.map(c => `<option value="${c.id}">${c.name}, ${c.province}</option>`).join("");
   if (selectId) sel.value = selectId;
 }
 async function refreshSuburbs(cityId, selectId) {
@@ -216,10 +219,12 @@ async function refreshSuburbs(cityId, selectId) {
   populateSelect(sel, suburbs, "id", "name", "— none —");
   if (selectId) sel.value = selectId;
 }
-async function refreshBranches(cityId, suburbId, selectId) {
+async function refreshBranches(customerId, cityId, suburbId, selectId) {
   const sel = document.getElementById("sel-branch");
-  if (!cityId) { sel.disabled = true; sel.innerHTML = '<option value="">— select city first —</option>'; return; }
-  const qs = suburbId ? `city_id=${cityId}&suburb_id=${suburbId}` : `city_id=${cityId}`;
+  if (!customerId || !cityId) { sel.disabled = true; sel.innerHTML = '<option value="">— select customer and city first —</option>'; return; }
+  const qs = suburbId
+    ? `customer_id=${customerId}&city_id=${cityId}&suburb_id=${suburbId}`
+    : `customer_id=${customerId}&city_id=${cityId}`;
   const branches = await api(`/api/branches?${qs}`);
   sel.disabled = false;
   populateSelect(sel, branches, "id", "name", "— select —");
@@ -238,10 +243,11 @@ async function refreshCredentials(selectId) {
 
 document.getElementById("sel-customer").addEventListener("change", async (e) => {
   state.customerId = e.target.value || null;
-  state.cityId = null; state.suburbId = null; state.branchId = null;
-  await refreshCities(state.customerId);
-  document.getElementById("sel-suburb").disabled = true;
-  document.getElementById("sel-branch").disabled = true;
+  state.branchId = null;
+  // City selection is independent of customer — only the branch list
+  // (which existing branch, if any, this customer already has at this
+  // city/suburb) depends on both together.
+  await refreshBranches(state.customerId, state.cityId, state.suburbId);
 });
 document.getElementById("btn-new-customer").addEventListener("click", async () => {
   const name = document.getElementById("new-customer-name").value.trim();
@@ -258,23 +264,25 @@ document.getElementById("sel-city").addEventListener("change", async (e) => {
   state.cityId = e.target.value || null;
   state.suburbId = null; state.branchId = null;
   await refreshSuburbs(state.cityId);
-  await refreshBranches(state.cityId, null);
+  await refreshBranches(state.customerId, state.cityId, null);
 });
 document.getElementById("btn-new-city").addEventListener("click", async () => {
-  if (!state.customerId) { notice("Select or create a customer first"); return; }
   const name = document.getElementById("new-city-name").value.trim();
-  if (!name) return;
+  const province = document.getElementById("new-city-province").value.trim();
+  if (!name || !province) { notice("City/town name and province are required"); return; }
   try {
-    const c = await api("/api/cities", { method: "POST", body: { customer_id: parseInt(state.customerId), name } });
+    const c = await api("/api/cities", { method: "POST", body: { name, province } });
     document.getElementById("new-city-name").value = "";
-    await refreshCities(state.customerId, c.id);
+    document.getElementById("new-city-province").value = "";
+    // Newly created cities are immediately available to every customer.
+    await refreshCities(c.id);
     document.getElementById("sel-city").dispatchEvent(new Event("change"));
   } catch (e) { notice(e.message); }
 });
 
 document.getElementById("sel-suburb").addEventListener("change", async (e) => {
   state.suburbId = e.target.value || null;
-  await refreshBranches(state.cityId, state.suburbId);
+  await refreshBranches(state.customerId, state.cityId, state.suburbId);
 });
 document.getElementById("btn-new-suburb").addEventListener("click", async () => {
   if (!state.cityId) { notice("Select or create a city first"); return; }
@@ -283,6 +291,7 @@ document.getElementById("btn-new-suburb").addEventListener("click", async () => 
   try {
     const s = await api("/api/suburbs", { method: "POST", body: { city_id: parseInt(state.cityId), name } });
     document.getElementById("new-suburb-name").value = "";
+    // Newly created suburbs are immediately available to every customer.
     await refreshSuburbs(state.cityId, s.id);
     document.getElementById("sel-suburb").dispatchEvent(new Event("change"));
   } catch (e) { notice(e.message); }
@@ -307,7 +316,7 @@ document.getElementById("btn-new-branch").addEventListener("click", async () => 
         name, physical_address: document.getElementById("new-branch-address").value, latitude: lat, longitude: lng,
       },
     });
-    await refreshBranches(state.cityId, state.suburbId, b.id);
+    await refreshBranches(state.customerId, state.cityId, state.suburbId, b.id);
     state.branchId = b.id;
     clearNotice();
   } catch (e) { notice(e.message); }
@@ -496,6 +505,7 @@ document.getElementById("btn-finish").addEventListener("click", () => { window.l
 
 (async () => {
   await refreshCustomers();
+  await refreshCities();
   await refreshIsps();
   showStep(1);
 })();

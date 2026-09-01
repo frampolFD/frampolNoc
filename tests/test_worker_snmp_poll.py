@@ -14,7 +14,7 @@ def _make_snmp_wan_link(db, *, credential_id="default", encrypted_secret=None, m
     customer = Customer(name="Test Customer")
     db.add(customer)
     db.flush()
-    city = City(customer_id=customer.id, name="Test City")
+    city = City(name="Test City", province="Test Province", country_code="ZW")
     db.add(city)
     db.flush()
     branch = Branch(customer_id=customer.id, city_id=city.id, name="Test Branch", latitude=0.0, longitude=0.0)

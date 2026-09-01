@@ -1,6 +1,6 @@
 def _make_branch(client) -> int:
     customer = client.post("/api/customers", json={"name": "Customer"}).json()
-    city = client.post("/api/cities", json={"customer_id": customer["id"], "name": "Harare"}).json()
+    city = client.post("/api/cities", json={"name": "Harare", "province": "Harare"}).json()
     branch = client.post(
         "/api/branches",
         json={"customer_id": customer["id"], "city_id": city["id"], "name": "Branch", "latitude": -17.8, "longitude": 31.0},

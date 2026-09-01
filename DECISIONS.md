@@ -8,6 +8,44 @@ The primary hierarchy is:
 
 Customer → City → Suburb → Branch → WAN Link
 
+This is a *navigation* hierarchy, not an *ownership* hierarchy — see
+"Shared geographic ownership model" below. City and Suburb sit between
+Customer and Branch in the Explorer tree, but they are not owned by
+Customer; only Branch is.
+
+## Shared geographic ownership model
+
+Approved (correction, Stabilization follow-up).
+
+Cities and suburbs are shared geographic reference data, not
+customer-owned records. Two different customers must be able to create
+branches using the same city and suburb — e.g. two unrelated customers
+both having a branch in Harare must reference the same `cities` row, not
+each get their own private copy of "Harare."
+
+This corrects an earlier implementation mistake where `City.customer_id`
+scoped every city to one customer, causing a duplicate city (and duplicate
+suburb) row to be created per customer for what was really the same
+real-world place, and risking a customer's city deletion cascading into
+another customer's branches. See DOMAIN_MODEL.md for the full ownership
+model and DATABASE_DESIGN.md for the corrected schema.
+
+Consequences:
+
+- `City`/`Suburb` creation, uniqueness and deletion are shared
+  administrative concerns — a new city/suburb is immediately usable by
+  every customer, uniqueness is checked case-insensitively across all
+  customers (not per-customer), and deleting a referenced city/suburb is
+  blocked rather than cascading into another customer's branches.
+- The Explorer's city/suburb nodes under each customer are derived from
+  that customer's own branches (grouped by which shared city/suburb they
+  use), not from a `Customer.cities` relationship — the same shared city
+  can legitimately appear under several customers at once.
+- Zimbabwe's cities/towns are preloaded from a pinned, licensed upstream
+  dataset (see DATA_SOURCES.md) so onboarding a branch rarely requires
+  creating a new city from scratch; adding a missing locality is still
+  supported for anything the preload doesn't cover.
+
 ## Explorer
 
 Approved.

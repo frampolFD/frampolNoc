@@ -18,33 +18,52 @@ Fields:
 
 Relationship:
 
-Customer has many Cities.
+Customer has many Branches (directly — not via City; see City below).
 
 ## City
 
+Shared geographic reference data — NOT owned by a Customer. Two different
+customers routinely have branches in the same city, so City must never be
+scoped to a customer_id. See DECISIONS.md "Shared geographic ownership
+model".
+
 - id
-- customer_id
 - name
+- province required
+- country_code required, default "ZW"
+- latitude nullable
+- longitude nullable
+
+Uniqueness: country_code + province + name (case-insensitive at the API
+layer).
 
 Relationship:
 
-City belongs to Customer.
-City has many Suburbs and/or Branches.
+City has many Suburbs (shared, also not customer-owned).
+City has many Branches, across any number of different Customers.
+Deleting a City that still has Branches referencing it is blocked, not
+cascaded — a shared City must never delete another customer's Branches.
+
+Preloaded with Zimbabwean cities/towns; see DATA_SOURCES.md for the
+dataset and licensing.
 
 ## Suburb
 
-Optional.
+Optional. Shared geographic reference data, same ownership model as City.
 
 - id
 - city_id
 - name
+
+Uniqueness: city_id + name (case-insensitive at the API layer).
 
 ## Branch
 
 - id
 - customer_id
-- city_id
-- suburb_id nullable
+- city_id — references a shared City; not implicitly restricted to the
+  customer's own cities, because no customer owns any city
+- suburb_id nullable — must belong to the selected city_id
 - name
 - physical_address
 - latitude required

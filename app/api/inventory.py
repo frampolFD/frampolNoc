@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth import get_current_user
@@ -35,17 +36,28 @@ def create_customer(payload: CustomerIn, db: Session = Depends(get_db)):
 
 
 @router.get("/cities", response_model=list[CityOut])
-def list_cities(customer_id: int | None = None, db: Session = Depends(get_db)):
-    query = db.query(City)
-    if customer_id is not None:
-        query = query.filter(City.customer_id == customer_id)
-    return query.order_by(City.name).all()
+def list_cities(db: Session = Depends(get_db)):
+    """Cities are shared geographic reference data, not scoped to any
+    customer — every customer sees the same list."""
+    return db.query(City).order_by(City.province, City.name).all()
 
 
 @router.post("/cities", response_model=CityOut)
 def create_city(payload: CityIn, db: Session = Depends(get_db)):
-    if not db.get(Customer, payload.customer_id):
-        raise HTTPException(status_code=404, detail="Customer not found")
+    existing = (
+        db.query(City)
+        .filter(
+            func.lower(City.country_code) == payload.country_code.lower(),
+            func.lower(City.province) == payload.province.lower(),
+            func.lower(City.name) == payload.name.lower(),
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"City '{payload.name}' already exists in {payload.province}, {payload.country_code}",
+        )
     city = City(**payload.model_dump())
     db.add(city)
     db.commit()
@@ -65,6 +77,15 @@ def list_suburbs(city_id: int | None = None, db: Session = Depends(get_db)):
 def create_suburb(payload: SuburbIn, db: Session = Depends(get_db)):
     if not db.get(City, payload.city_id):
         raise HTTPException(status_code=404, detail="City not found")
+
+    existing = (
+        db.query(Suburb)
+        .filter(Suburb.city_id == payload.city_id, func.lower(Suburb.name) == payload.name.lower())
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Suburb '{payload.name}' already exists in this city")
+
     suburb = Suburb(**payload.model_dump())
     db.add(suburb)
     db.commit()
@@ -108,11 +129,8 @@ def create_branch(payload: BranchIn, db: Session = Depends(get_db)):
     if not db.get(Customer, payload.customer_id):
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    city = db.get(City, payload.city_id)
-    if not city:
+    if not db.get(City, payload.city_id):
         raise HTTPException(status_code=404, detail="City not found")
-    if city.customer_id != payload.customer_id:
-        raise HTTPException(status_code=422, detail="City does not belong to the supplied customer")
 
     if payload.suburb_id:
         suburb = db.get(Suburb, payload.suburb_id)
@@ -145,12 +163,20 @@ def create_isp(payload: ISPIn, db: Session = Depends(get_db)):
 @router.get("/explorer")
 def explorer_tree(db: Session = Depends(get_db)):
     """Full Customer -> City -> Suburb -> Branch -> WAN Link tree for the
-    always-visible Explorer sidebar."""
+    always-visible Explorer sidebar.
+
+    Cities/suburbs are shared reference data now, not owned by a customer,
+    so a customer's city nodes are built from that customer's own branches
+    (grouped by which shared city/suburb they use) rather than from a
+    Customer.cities relationship that no longer exists. The same shared
+    city can therefore legitimately appear under several customers.
+    """
     customers = (
         db.query(Customer)
         .options(
-            selectinload(Customer.cities).selectinload(City.suburbs),
-            selectinload(Customer.cities).selectinload(City.branches).selectinload(Branch.wan_links),
+            selectinload(Customer.branches).selectinload(Branch.city),
+            selectinload(Customer.branches).selectinload(Branch.suburb),
+            selectinload(Customer.branches).selectinload(Branch.wan_links),
         )
         .order_by(Customer.name)
         .all()
@@ -165,23 +191,29 @@ def explorer_tree(db: Session = Depends(get_db)):
 
     tree = []
     for customer in customers:
+        cities_by_id: dict[int, dict] = {}
+        for branch in customer.branches:
+            city = branch.city
+            city_entry = cities_by_id.setdefault(
+                city.id, {"id": city.id, "name": city.name, "suburbs_by_id": {}, "branches": []}
+            )
+            if branch.suburb_id is not None:
+                suburb = branch.suburb
+                suburb_entry = city_entry["suburbs_by_id"].setdefault(
+                    suburb.id, {"id": suburb.id, "name": suburb.name, "branches": []}
+                )
+                suburb_entry["branches"].append(branch_node(branch))
+            else:
+                city_entry["branches"].append(branch_node(branch))
+
         city_nodes = []
-        for city in customer.cities:
-            suburb_nodes = [
-                {
-                    "id": suburb.id,
-                    "name": suburb.name,
-                    "branches": [branch_node(b) for b in city.branches if b.suburb_id == suburb.id],
-                }
-                for suburb in city.suburbs
-            ]
-            branches_without_suburb = [branch_node(b) for b in city.branches if b.suburb_id is None]
+        for city_entry in sorted(cities_by_id.values(), key=lambda c: c["name"]):
             city_nodes.append(
                 {
-                    "id": city.id,
-                    "name": city.name,
-                    "suburbs": suburb_nodes,
-                    "branches": branches_without_suburb,
+                    "id": city_entry["id"],
+                    "name": city_entry["name"],
+                    "suburbs": sorted(city_entry["suburbs_by_id"].values(), key=lambda s: s["name"]),
+                    "branches": city_entry["branches"],
                 }
             )
         tree.append({"id": customer.id, "name": customer.name, "cities": city_nodes})
