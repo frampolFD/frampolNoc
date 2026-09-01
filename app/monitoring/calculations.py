@@ -49,7 +49,14 @@ def total_throughput_bps(rx_bps: float, tx_bps: float) -> float:
     return rx_bps + tx_bps
 
 
-def utilisation_percent(total_bps: float, circuit_capacity_bps: int) -> float:
+def utilisation_percent(rx_bps: float, tx_bps: float, circuit_capacity_bps: int) -> float:
+    """Utilisation reflects how full the busier direction of a full-duplex
+    circuit is — RX and TX travel on independent channels, so a 100 Mbps
+    circuit running 60 Mbps in *each* direction simultaneously is at 60%
+    utilisation, not 120%. Combined RX+TX remains available separately via
+    total_throughput_bps() for display/consumption purposes, where summing
+    both directions is exactly what's wanted.
+    """
     if circuit_capacity_bps <= 0:
         raise ValueError("circuit_capacity_bps must be positive")
-    return (total_bps / circuit_capacity_bps) * 100.0
+    return (max(rx_bps, tx_bps) / circuit_capacity_bps) * 100.0

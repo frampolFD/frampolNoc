@@ -102,6 +102,10 @@
 
 <div class="panel step-panel" data-step="3" style="display:none">
   <h2>Monitoring</h2>
+  <div class="form-field checkbox" style="margin-bottom:12px">
+    <input type="checkbox" id="monitoring-disabled" />
+    <label>This WAN should exist as inventory only — monitoring is intentionally not enabled (e.g. customer does not permit it)</label>
+  </div>
   <h3>ICMP</h3>
   <div class="form-grid">
     <div class="form-field checkbox"><input type="checkbox" id="icmp-enabled" /><label>Enable ICMP monitoring</label></div>
@@ -349,10 +353,23 @@ document.getElementById("snmp-enabled").addEventListener("change", (e) => {
   if (e.target.checked) refreshCredentials();
 });
 
+document.getElementById("monitoring-disabled").addEventListener("change", (e) => {
+  const disabled = e.target.checked;
+  const icmpBox = document.getElementById("icmp-enabled");
+  const snmpBox = document.getElementById("snmp-enabled");
+  if (disabled) {
+    icmpBox.checked = false;
+    snmpBox.checked = false;
+  }
+  icmpBox.disabled = disabled;
+  snmpBox.disabled = disabled;
+});
+
 document.getElementById("step3-back").addEventListener("click", () => showStep(2));
 document.getElementById("step3-next").addEventListener("click", async () => {
-  const icmpEnabled = document.getElementById("icmp-enabled").checked;
-  const snmpEnabled = document.getElementById("snmp-enabled").checked;
+  const monitoringDisabled = document.getElementById("monitoring-disabled").checked;
+  const icmpEnabled = !monitoringDisabled && document.getElementById("icmp-enabled").checked;
+  const snmpEnabled = !monitoringDisabled && document.getElementById("snmp-enabled").checked;
   if (icmpEnabled && !document.getElementById("icmp-target").value.trim()) { notice("ICMP target IP is required"); return; }
   if (snmpEnabled && (!document.getElementById("snmp-target").value.trim() || !document.getElementById("sel-credential").value)) {
     notice("SNMP target IP and credential are required"); return;
@@ -368,6 +385,7 @@ document.getElementById("step3-next").addEventListener("click", async () => {
     device_vendor: document.getElementById("device-vendor").value.trim() || null,
     device_model: document.getElementById("device-model").value.trim() || null,
     notes: document.getElementById("wan-notes").value.trim() || null,
+    monitoring_disabled: monitoringDisabled,
     icmp_enabled: icmpEnabled,
     icmp_target_ip: icmpEnabled ? document.getElementById("icmp-target").value.trim() : null,
     snmp_enabled: snmpEnabled,

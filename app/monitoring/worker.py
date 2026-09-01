@@ -215,6 +215,15 @@ async def poll_snmp_for_wan_link(wan_link_id: int) -> None:
                 )
             except Exception:
                 logger.exception("SNMP poll failed for wan_link %s", wan_link_id)
+                # Record that an attempt happened even though it failed, so
+                # the scheduler respects the normal polling cadence instead
+                # of treating this target as permanently overdue and
+                # retrying it on every 5-second tick. This is scheduling
+                # bookkeeping only — a failed SNMP poll says nothing about
+                # whether the WAN is up (that's ICMP's job, independently).
+                state = _get_or_create_poll_state(db, wan_link)
+                state.last_snmp_poll_at = datetime.now(timezone.utc)
+                db.commit()
                 return
             finally:
                 del community
@@ -235,7 +244,13 @@ async def poll_snmp_for_wan_link(wan_link_id: int) -> None:
                     rx = calculate_rate(state.last_in_octets, counters.in_octets, elapsed, is_64_bit=counters.used_high_capacity_counters)
                     tx = calculate_rate(state.last_out_octets, counters.out_octets, elapsed, is_64_bit=counters.used_high_capacity_counters)
                     total = total_throughput_bps(rx.bps, tx.bps)
-                    util_value = utilisation_percent(total, wan_link.circuit_capacity_bps)
+                    # Utilisation needs a known circuit capacity; an
+                    # inventory-only/not-yet-configured link may not have
+                    # one yet (nullable — see WANLink.circuit_capacity_bps).
+                    # Leave utilisation absent rather than substituting 0,
+                    # which would misleadingly read as "0% utilised".
+                    if wan_link.circuit_capacity_bps is not None:
+                        util_value = utilisation_percent(rx.bps, tx.bps, wan_link.circuit_capacity_bps)
 
                     db.add(
                         Measurement(

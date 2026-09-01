@@ -88,7 +88,9 @@ class SNMPCredentialOut(BaseModel):
 class WANLinkCreate(BaseModel):
     branch_id: int
     isp_id: int | None = None
-    circuit_capacity_bps: int
+    circuit_capacity_bps: int | None = Field(
+        None, description="Required once ICMP or SNMP monitoring is enabled; may be left unset for inventory-only links"
+    )
     role: WANRole = WANRole.primary
     public_ip: str | None = None
     device_vendor: str | None = None
@@ -102,6 +104,10 @@ class WANLinkCreate(BaseModel):
     snmp_target_ip: str | None = None
     snmp_version: SNMPVersion | None = None
     snmp_credential_id: int | None = None
+
+    monitoring_disabled: bool = Field(
+        False, description="Deliberately no monitoring for this link (e.g. customer doesn't permit it) — distinct from not-yet-configured"
+    )
 
     sustained_util_threshold_percent: float = 90.0
     sustained_util_duration_seconds: int = 600
@@ -169,7 +175,7 @@ class WANLinkOut(BaseModel):
     branch_id: int
     isp_id: int | None
     name_generated: str
-    circuit_capacity_bps: int
+    circuit_capacity_bps: int | None
     role: WANRole
     public_ip: str | None
     device_vendor: str | None
@@ -184,6 +190,7 @@ class WANLinkOut(BaseModel):
     selected_interface_ip: str | None
     selected_interface_alias: str | None
     monitoring_status: MonitoringStatus
+    monitoring_disabled: bool
     notes: str | None
     sustained_util_threshold_percent: float
     sustained_util_duration_seconds: int

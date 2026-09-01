@@ -138,8 +138,9 @@ document.getElementById("btn-clear-intervals").addEventListener("click", async (
 function renderConfig(wan) {
   document.getElementById("config-view").innerHTML = `
     <table class="data-table">
+      <tr><th>Monitoring Status</th><td>${wan.monitoring_status.replace(/_/g, " ")}</td></tr>
       <tr><th>ISP</th><td>${wan.isp_name || "—"}</td></tr>
-      <tr><th>Circuit Capacity</th><td>${fmtBps(wan.circuit_capacity_bps)}</td></tr>
+      <tr><th>Circuit Capacity</th><td>${wan.circuit_capacity_bps !== null ? fmtBps(wan.circuit_capacity_bps) : "not set (inventory only)"}</td></tr>
       <tr><th>Role</th><td>${wan.role}</td></tr>
       <tr><th>Public IP</th><td>${wan.public_ip || "—"}</td></tr>
       <tr><th>ICMP Target</th><td>${wan.icmp_enabled ? wan.icmp_target_ip : "disabled"}</td></tr>

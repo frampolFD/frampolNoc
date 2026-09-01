@@ -84,7 +84,48 @@ Persist discovered interface metadata where available.
 
 Approved.
 
-Required for monitored WAN links and used for utilisation.
+Required for monitored WAN links (ICMP or SNMP enabled) and used for
+utilisation. Nullable at the database level for a WAN link that is
+inventory-only or not yet configured — the API rejects enabling ICMP/SNMP
+without a capacity, but a link may exist with neither enabled and no
+capacity set. Utilisation is left absent (not zero) when capacity is
+unknown; a missing value must never be silently treated as 0%.
+
+## Utilisation semantics
+
+Approved (Stabilization Milestone 1).
+
+`total_throughput = RX + TX` remains the number shown for combined
+throughput/consumption — that's genuinely useful and correct as a total.
+
+WAN utilisation, and the sustained-utilisation alert threshold, use the
+busier direction instead: `max(RX, TX) / circuit_capacity`. RX and TX ride
+independent channels on a full-duplex circuit, so 60 Mbps in *each*
+direction on a 100 Mbps circuit is 60% utilised, not 120%. Using RX+TX for
+utilisation would let a link alert as "over capacity" while each direction
+still has headroom, which is misleading for engineers troubleshooting
+saturation.
+
+## Monitoring status semantics
+
+Approved (Stabilization Milestone 1).
+
+`not_configured` and `monitoring_disabled` are distinct states, backed by a
+dedicated `monitoring_disabled` boolean column on WANLink (independent of
+the `icmp_enabled`/`snmp_enabled` toggles):
+
+- `not_configured` — the WAN exists but nobody has set up monitoring for it
+  yet. The default state for a newly created link.
+- `monitoring_disabled` — monitoring was deliberately turned off (e.g. the
+  customer does not permit monitoring, or the link should exist purely as
+  operational inventory). Set explicitly by the engineer, never inferred.
+
+`monitoring_disabled` takes precedence over `icmp_enabled`/`snmp_enabled`
+when computing the displayed status, so it can't be silently overridden by
+those toggles. Both states render as the grey/"unknown" health colour per
+UI_DESIGN.md — neither has a meaningful up/down signal — but they answer
+different questions for an engineer scanning the Explorer ("still needs
+setup" vs. "this one's deliberately hands-off").
 
 ## Sustained utilisation
 

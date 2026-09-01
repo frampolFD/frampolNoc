@@ -1,6 +1,7 @@
 import enum
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Enum,
     Float,
@@ -160,7 +161,11 @@ class WANLink(Base):
     isp_id: Mapped[int | None] = mapped_column(ForeignKey("isps.id"), nullable=True)
 
     name_generated: Mapped[str] = mapped_column(String(500), nullable=False)
-    circuit_capacity_bps: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Nullable: required for a monitored link (utilisation depends on it),
+    # but an inventory-only/not-yet-configured link may not have one yet.
+    # BigInteger: bps values for high-capacity circuits (10G+) exceed a
+    # 32-bit PostgreSQL INTEGER.
+    circuit_capacity_bps: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     role: Mapped[WANRole] = mapped_column(Enum(WANRole), default=WANRole.primary)
     public_ip: Mapped[str | None] = mapped_column(String(100))
     device_vendor: Mapped[str | None] = mapped_column(String(100))
@@ -180,6 +185,10 @@ class WANLink(Base):
     selected_interface_alias: Mapped[str | None] = mapped_column(String(200))
 
     monitoring_status: Mapped[MonitoringStatus] = mapped_column(Enum(MonitoringStatus), default=MonitoringStatus.not_configured)
+    # Explicit "deliberately turned off" flag, distinct from icmp_enabled/
+    # snmp_enabled simply being false because setup isn't finished yet. See
+    # DECISIONS.md ("monitoring_disabled vs not_configured").
+    monitoring_disabled: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str | None] = mapped_column(Text)
 
     sustained_util_threshold_percent: Mapped[float] = mapped_column(Float, default=90.0)
@@ -216,7 +225,7 @@ class SNMPInterface(Base):
     description: Mapped[str | None] = mapped_column(String(500))
     alias: Mapped[str | None] = mapped_column(String(200))
     ip_address: Mapped[str | None] = mapped_column(String(100))
-    speed_bps: Mapped[int | None] = mapped_column(Integer)
+    speed_bps: Mapped[int | None] = mapped_column(BigInteger)  # bps; a 32-bit Integer overflows on 10G+ interfaces
     mac_address: Mapped[str | None] = mapped_column(String(50))
     admin_status: Mapped[str | None] = mapped_column(String(20))
     oper_status: Mapped[str | None] = mapped_column(String(20))
@@ -237,8 +246,9 @@ class PollState(Base):
     wan_link_id: Mapped[int] = mapped_column(ForeignKey("wan_links.id"), nullable=False, unique=True)
 
     last_snmp_poll_at: Mapped[object | None] = mapped_column(UTCDateTime(), nullable=True)
-    last_in_octets: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    last_out_octets: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # BigInteger: raw SNMP Counter64 values exceed a 32-bit PostgreSQL INTEGER.
+    last_in_octets: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    last_out_octets: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     last_icmp_poll_at: Mapped[object | None] = mapped_column(UTCDateTime(), nullable=True)
 
@@ -259,8 +269,8 @@ class Measurement(Base):
     tx_bps: Mapped[float | None] = mapped_column(Float, nullable=True)
     total_bps: Mapped[float | None] = mapped_column(Float, nullable=True)
     utilisation_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
-    rx_bytes_delta: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    tx_bytes_delta: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rx_bytes_delta: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    tx_bytes_delta: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     packet_loss_percent: Mapped[float | None] = mapped_column(Float, nullable=True)

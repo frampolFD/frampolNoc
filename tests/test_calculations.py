@@ -40,11 +40,18 @@ def test_total_throughput():
     assert total_throughput_bps(30_000_000, 5_000_000) == 35_000_000
 
 
-def test_utilisation_percent():
-    # 50 Mbps of traffic on a 100 Mbps circuit = 50%
-    assert utilisation_percent(50_000_000, 100_000_000) == pytest.approx(50.0)
+def test_utilisation_percent_uses_busier_direction_not_sum():
+    # Full-duplex: 60 Mbps RX and 60 Mbps TX simultaneously on a 100 Mbps
+    # circuit is 60% utilisation, not 120% — RX and TX don't compete for
+    # the same channel capacity.
+    assert utilisation_percent(60_000_000, 60_000_000, 100_000_000) == pytest.approx(60.0)
+
+
+def test_utilisation_percent_picks_the_larger_of_asymmetric_rx_tx():
+    assert utilisation_percent(80_000_000, 10_000_000, 100_000_000) == pytest.approx(80.0)
+    assert utilisation_percent(10_000_000, 80_000_000, 100_000_000) == pytest.approx(80.0)
 
 
 def test_utilisation_percent_rejects_non_positive_capacity():
     with pytest.raises(ValueError):
-        utilisation_percent(1000, 0)
+        utilisation_percent(1000, 1000, 0)

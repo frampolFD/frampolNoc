@@ -24,7 +24,7 @@ def generate_wan_name(
     device_model: str | None,
     isp_name: str | None,
     public_ip: str | None,
-    circuit_capacity_bps: int,
+    circuit_capacity_bps: int | None,
 ) -> str:
     """Matches the documented template exactly:
 
@@ -33,6 +33,10 @@ def generate_wan_name(
     i.e. Customer - City - Branch - DeviceModel - ISP - (PublicIP) - Capacity.
     Suburb is part of the navigation hierarchy but is deliberately not part
     of the generated name (the branch name already identifies the location).
+
+    circuit_capacity_bps may be absent for an inventory-only/not-yet-
+    configured link (see WANLink.circuit_capacity_bps) — the capacity
+    segment is simply omitted rather than showing a fabricated "0Mbps".
     """
     parts: list[str] = [customer_name, city_name, branch_name]
     if device_model:
@@ -41,5 +45,6 @@ def generate_wan_name(
         parts.append(isp_name)
     if public_ip:
         parts.append(f"({public_ip})")
-    parts.append(format_capacity(circuit_capacity_bps))
+    if circuit_capacity_bps is not None:
+        parts.append(format_capacity(circuit_capacity_bps))
     return " - ".join(parts)

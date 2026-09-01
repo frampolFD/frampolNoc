@@ -103,6 +103,10 @@ def create_wan_link(payload: WANLinkCreate, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="SNMP credential not found")
     if payload.icmp_enabled and not payload.icmp_target_ip:
         raise HTTPException(status_code=422, detail="ICMP target IP is required when ICMP is enabled")
+    # Utilisation depends on capacity, so any actively monitored link needs
+    # one; an inventory-only/not-yet-configured link may leave it unset.
+    if (payload.icmp_enabled or payload.snmp_enabled) and payload.circuit_capacity_bps is None:
+        raise HTTPException(status_code=422, detail="circuit_capacity_bps is required when ICMP or SNMP monitoring is enabled")
 
     name = generate_wan_name(
         customer_name=branch.customer.name,
@@ -117,7 +121,7 @@ def create_wan_link(payload: WANLinkCreate, db: Session = Depends(get_db)):
     wan_link = WANLink(
         **payload.model_dump(),
         name_generated=name,
-        monitoring_status=compute_monitoring_status(payload.icmp_enabled, payload.snmp_enabled),
+        monitoring_status=compute_monitoring_status(payload.icmp_enabled, payload.snmp_enabled, payload.monitoring_disabled),
     )
     db.add(wan_link)
     db.commit()
@@ -217,7 +221,7 @@ def select_interface(wan_link_id: int, payload: InterfaceSelect, db: Session = D
     wan_link.selected_interface_name = interface.name or interface.description
     wan_link.selected_interface_ip = interface.ip_address
     wan_link.selected_interface_alias = interface.alias
-    wan_link.monitoring_status = compute_monitoring_status(wan_link.icmp_enabled, wan_link.snmp_enabled)
+    wan_link.monitoring_status = compute_monitoring_status(wan_link.icmp_enabled, wan_link.snmp_enabled, wan_link.monitoring_disabled)
     db.commit()
     db.refresh(wan_link)
     return wan_link

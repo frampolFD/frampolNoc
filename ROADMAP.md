@@ -8,15 +8,26 @@ The MVP must demonstrate a complete real monitoring workflow.
 
 ### Phase 1 — Application foundation
 
-- Backend
-- Frontend
-- PostgreSQL
-- Docker
+Current MVP implementation (approved for this stage):
+
+- Backend: FastAPI, single process
+- Frontend: server-rendered Jinja2 + vanilla JS + Chart.js
+- Database: SQLite via SQLAlchemy + Alembic — no separate database server
+  to run, works immediately on a developer/engineer machine
+- Monitoring: built into the same FastAPI process as an asyncio background
+  worker — no separate worker process or message queue
 - Environment configuration
 - Authentication
 - Basic layout
 - Explorer
 - Dashboard
+
+Possible production evolution, once real scale/concurrency needs it —
+**not required for the current MVP, and not being built now**:
+
+- PostgreSQL, if SQLite's single-writer model becomes a real constraint
+- A separate worker/process architecture, if polling load outgrows one process
+- Containerization (Docker), if useful for deployment at that point
 
 ### Phase 2 — Inventory
 

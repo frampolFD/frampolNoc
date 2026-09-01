@@ -107,10 +107,20 @@ def branch_breadcrumb(branch_id: int, db: Session = Depends(get_db)):
 def create_branch(payload: BranchIn, db: Session = Depends(get_db)):
     if not db.get(Customer, payload.customer_id):
         raise HTTPException(status_code=404, detail="Customer not found")
-    if not db.get(City, payload.city_id):
+
+    city = db.get(City, payload.city_id)
+    if not city:
         raise HTTPException(status_code=404, detail="City not found")
-    if payload.suburb_id and not db.get(Suburb, payload.suburb_id):
-        raise HTTPException(status_code=404, detail="Suburb not found")
+    if city.customer_id != payload.customer_id:
+        raise HTTPException(status_code=422, detail="City does not belong to the supplied customer")
+
+    if payload.suburb_id:
+        suburb = db.get(Suburb, payload.suburb_id)
+        if not suburb:
+            raise HTTPException(status_code=404, detail="Suburb not found")
+        if suburb.city_id != payload.city_id:
+            raise HTTPException(status_code=422, detail="Suburb does not belong to the supplied city")
+
     branch = Branch(**payload.model_dump())
     db.add(branch)
     db.commit()
