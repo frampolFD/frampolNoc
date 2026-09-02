@@ -113,36 +113,66 @@ def _walk_column_sync(target_ip: str, port: int, auth, base_oid: str, timeout: i
     return results
 
 
+def _extract_ipv4_from_index_suffix(suffix: str) -> str | None:
+    """Extract the IPv4 address from an ipAddrTable row's OID index suffix.
+
+    ipAdEntAddr — this table's INDEX — is a fixed 4-octet IpAddress per
+    RFC 1213, so a compliant row's OID suffix is exactly `A.B.C.D`. A
+    since-reported regression (not reproduced against the one live device
+    this codebase has been tested against, but documented in the bug
+    report that prompted this fix) showed some Fortinet firmware appending
+    exactly ONE extra numeric sub-identifier after those four octets, e.g.
+    `41.79.31.22.1` — a device-specific disambiguation index, not part of
+    the address. We accept only that one documented shape (4 octets plus
+    at most one trailing integer) and extract just the four octets from
+    it. Anything else — too few components, a non-numeric or out-of-range
+    octet, or more than one trailing component — has no verified meaning
+    here, so it is rejected outright rather than guessed at (blindly
+    keeping "the first four components" no matter how many more follow
+    would risk silently mangling data from a table this code doesn't
+    actually understand).
+    """
+    parts = suffix.split(".")
+    if len(parts) not in (4, 5):
+        return None
+    try:
+        octets = [int(p) for p in parts[:4]]
+    except ValueError:
+        return None
+    if any(o < 0 or o > 255 for o in octets):
+        return None
+    if len(parts) == 5 and not parts[4].isdigit():
+        # The only supported trailing shape is a single plain non-negative
+        # integer disambiguator; anything else past the four octets is an
+        # arbitrary/malformed suffix, not this documented quirk.
+        return None
+    return ".".join(str(o) for o in octets)
+
+
+def parse_ip_index_map(raw_rows: dict[str, object]) -> dict[str, int]:
+    """Pure merge of walked IP-MIB ipAdEntIfIndex rows into {ip_address: ifIndex}.
+
+    `raw_rows` is {oid_index_suffix: ifIndex_value} as produced by
+    `_walk_column_sync` for the IP_AD_ENT_IF_INDEX column. Rows whose
+    suffix doesn't resolve to a valid IPv4 address, or whose value isn't a
+    real ifIndex integer, are safely skipped rather than guessed at.
+    """
+    ip_to_index: dict[str, int] = {}
+    for suffix, value in raw_rows.items():
+        ip_address = _extract_ipv4_from_index_suffix(str(suffix))
+        if ip_address is None:
+            continue
+        try:
+            ip_to_index[ip_address] = int(value)
+        except (TypeError, ValueError):
+            continue
+    return ip_to_index
+
+
 def _walk_ip_map_sync(target_ip: str, port: int, auth, timeout: int, retries: int) -> dict[str, int]:
     """Returns {ip_address: ifIndex} discovered from IP-MIB ipAddrTable."""
-    engine = SnmpEngine()
-    transport = UdpTransportTarget((target_ip, port), timeout=timeout, retries=retries)
-    ip_to_index: dict[str, int] = {}
-
-    for errorIndication, errorStatus, errorIndex, varBinds in bulkCmd(
-        engine,
-        auth,
-        transport,
-        ContextData(),
-        0,
-        25,
-        ObjectType(ObjectIdentity(IP_AD_ENT_IF_INDEX)),
-        lexicographicMode=False,
-    ):
-        if errorIndication:
-            raise SNMPError(str(errorIndication))
-        if errorStatus:
-            raise SNMPError(f"{errorStatus.prettyPrint()} at {errorIndex}")
-
-        for varBind in varBinds:
-            oid, value = varBind
-            oid_str = str(oid)
-            if not oid_str.startswith(IP_AD_ENT_IF_INDEX + "."):
-                continue
-            ip_address = oid_str[len(IP_AD_ENT_IF_INDEX) + 1 :]
-            ip_to_index[ip_address] = int(value)
-
-    return ip_to_index
+    raw_rows = _walk_column_sync(target_ip, port, auth, IP_AD_ENT_IF_INDEX, timeout, retries)
+    return parse_ip_index_map(raw_rows)
 
 
 def build_interfaces(

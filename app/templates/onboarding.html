@@ -133,7 +133,13 @@
       <label>New credential (name + community string)</label>
       <div style="display:flex;gap:6px">
         <input id="new-cred-name" placeholder="e.g. Frampol Default v2c" style="flex:1" />
-        <input id="new-cred-community" type="password" placeholder="community string" style="flex:1" />
+        <div class="password-input" style="flex:1">
+          <input id="new-cred-community" type="password" placeholder="community string" autocomplete="new-password" />
+          <button type="button" class="password-toggle" id="toggle-cred-community"
+                  aria-label="Show community string" aria-pressed="false" title="Show community string">
+            <span aria-hidden="true">&#128065;</span>
+          </button>
+        </div>
         <button class="btn" id="btn-new-cred">Create</button>
       </div>
     </div>
@@ -150,6 +156,7 @@
     <button class="btn primary" id="btn-discover">Discover Interfaces</button>
   </div>
   <div id="discovery-area" class="empty-state">Click "Discover Interfaces" to query the target device over SNMP.</div>
+  <div id="selection-confirmation" class="notice success" style="display:none"></div>
   <div class="quick-actions" style="margin-top:16px">
     <button class="btn" id="step4-back">Back</button>
     <button class="btn primary" id="step4-next" disabled>Next</button>
@@ -167,7 +174,7 @@
 {% endblock %}
 {% block scripts %}
 <script>
-const state = { customerId: null, cityId: null, suburbId: null, branchId: null, isp: null, wanLinkId: null, selectedIfIndex: null, snmpEnabled: false };
+const state = { customerId: null, cityId: null, suburbId: null, branchId: null, isp: null, wanLinkId: null, selectedIfIndex: null, discoveredInterfaces: [], snmpEnabled: false };
 
 function notice(message, type = "error") {
   document.getElementById("notice-area").innerHTML = `<div class="notice ${type}">${message}</div>`;
@@ -358,9 +365,25 @@ document.getElementById("btn-new-cred").addEventListener("click", async () => {
     const cred = await api("/api/snmp-credentials", { method: "POST", body: { name, version: "v2c", community } });
     document.getElementById("new-cred-name").value = "";
     document.getElementById("new-cred-community").value = "";
+    setCommunityVisibility(false);
     await refreshCredentials(cred.id);
     clearNotice();
   } catch (e) { notice(e.message); }
+});
+
+function setCommunityVisibility(visible) {
+  const input = document.getElementById("new-cred-community");
+  const toggle = document.getElementById("toggle-cred-community");
+  input.type = visible ? "text" : "password";
+  toggle.setAttribute("aria-pressed", String(visible));
+  toggle.setAttribute("aria-label", visible ? "Hide community string" : "Show community string");
+  toggle.title = visible ? "Hide community string" : "Show community string";
+}
+
+document.getElementById("toggle-cred-community").addEventListener("click", () => {
+  const input = document.getElementById("new-cred-community");
+  setCommunityVisibility(input.type === "password");
+  input.focus();
 });
 
 document.getElementById("snmp-enabled").addEventListener("change", (e) => {
@@ -445,30 +468,7 @@ document.getElementById("btn-discover").addEventListener("click", async () => {
   area.innerHTML = '<div class="empty-state">Querying device over SNMP…</div>';
   try {
     const interfaces = await api(`/api/wan-links/${state.wanLinkId}/discover`, { method: "POST" });
-    if (interfaces.length === 0) {
-      area.innerHTML = '<div class="empty-state">No interfaces returned.</div>';
-      return;
-    }
-    area.innerHTML = `
-      <table class="data-table">
-        <thead><tr><th>ifIndex</th><th>Name</th><th>Description</th><th>Alias</th><th>IP</th><th>Speed</th><th>Admin</th><th>Oper</th><th></th></tr></thead>
-        <tbody>
-          ${interfaces.map(i => `
-            <tr class="selectable ${i.suggested_match ? "suggested" : ""}" id="iface-row-${i.if_index}">
-              <td>${i.if_index}</td>
-              <td>${i.name || "—"}</td>
-              <td>${i.description || "—"}</td>
-              <td>${i.alias || "—"}${i.suggested_match ? ' <span class="badge-status badge-info">suggested match</span>' : ""}</td>
-              <td>${i.ip_address || "—"}</td>
-              <td>${i.speed_bps ? fmtBps(i.speed_bps) : "—"}</td>
-              <td><span class="badge-status ${i.admin_status === "up" ? "badge-up" : "badge-down"}">${i.admin_status || "?"}</span></td>
-              <td><span class="badge-status ${i.oper_status === "up" ? "badge-up" : "badge-down"}">${i.oper_status || "?"}</span></td>
-              <td><button class="btn" onclick="selectInterface(${i.if_index})">Select</button></td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    `;
+    renderDiscoveryTable(interfaces);
     clearNotice();
   } catch (e) {
     area.innerHTML = '<div class="empty-state">Discovery failed.</div>';
@@ -476,14 +476,107 @@ document.getElementById("btn-discover").addEventListener("click", async () => {
   }
 });
 
+function interfaceRowHtml(i) {
+  const isSelected = state.selectedIfIndex === i.if_index;
+  const rowClasses = ["selectable"];
+  if (i.suggested_match) rowClasses.push("suggested");
+  if (isSelected) rowClasses.push("selected-row");
+  return `
+    <tr class="${rowClasses.join(" ")}" id="iface-row-${i.if_index}">
+      <td>${i.if_index}</td>
+      <td>${i.name || "—"}</td>
+      <td>${i.description || "—"}</td>
+      <td>${i.alias || "—"}${i.suggested_match ? ' <span class="badge-status badge-recommended">Recommended</span>' : ""}</td>
+      <td>${i.ip_address || "—"}</td>
+      <td>${i.speed_bps ? fmtBps(i.speed_bps) : "—"}</td>
+      <td><span class="badge-status ${i.admin_status === "up" ? "badge-up" : "badge-down"}">${i.admin_status || "?"}</span></td>
+      <td><span class="badge-status ${i.oper_status === "up" ? "badge-up" : "badge-down"}">${i.oper_status || "?"}</span></td>
+      <td>
+        <button class="btn ${isSelected ? "selected" : ""}" onclick="selectInterface(${i.if_index})" aria-pressed="${isSelected}">
+          ${isSelected ? "Selected &#10003;" : "Select"}
+        </button>
+      </td>
+    </tr>
+  `;
+}
+
+function interfaceTableHtml(interfaces) {
+  return `
+    <table class="data-table">
+      <thead><tr><th>ifIndex</th><th>Name</th><th>Description</th><th>Alias</th><th>IP</th><th>Speed</th><th>Admin</th><th>Oper</th><th></th></tr></thead>
+      <tbody>${interfaces.map(interfaceRowHtml).join("")}</tbody>
+    </table>
+  `;
+}
+
+// Selection state (state.selectedIfIndex) is never assumed from a click —
+// it is only ever set after the select-interface API call succeeds (see
+// selectInterface below). Rendering here is a pure function of the current
+// discovery results plus that state, so re-running it after a fresh
+// discovery naturally preserves the selected row if that ifIndex is still
+// present, or drops the highlight/confirmation/Next-enabled state if not —
+// without needing separate "is this stale" bookkeeping.
+function renderDiscoveryTable(interfaces) {
+  state.discoveredInterfaces = interfaces;
+  const area = document.getElementById("discovery-area");
+  if (interfaces.length === 0) {
+    area.innerHTML = '<div class="empty-state">No interfaces returned.</div>';
+  } else {
+    // filter() preserves the device's original returned order (already
+    // ifIndex-sorted by the backend) within each partition, and the two
+    // partitions are mutually exclusive by construction — a recommended
+    // interface can never also appear in "Other discovered interfaces".
+    const recommended = interfaces.filter(i => i.suggested_match);
+    const others = interfaces.filter(i => !i.suggested_match);
+    if (recommended.length > 0) {
+      area.innerHTML = `
+        <h3 style="margin-top:0">Recommended interface</h3>
+        <div style="color:var(--brand-grey);font-size:12px;margin:-6px 0 10px">
+          Recommended because the discovered interface IP matches the configured target — click Select to use it.
+        </div>
+        ${interfaceTableHtml(recommended)}
+        <h3 style="margin-top:20px">Other discovered interfaces</h3>
+        ${interfaceTableHtml(others)}
+      `;
+    } else {
+      area.innerHTML = `
+        <h3 style="margin-top:0">Discovered interfaces</h3>
+        ${interfaceTableHtml(interfaces)}
+      `;
+    }
+  }
+  updateSelectionConfirmation();
+}
+
+function updateSelectionConfirmation() {
+  const box = document.getElementById("selection-confirmation");
+  const nextBtn = document.getElementById("step4-next");
+  const selected = state.discoveredInterfaces.find(i => i.if_index === state.selectedIfIndex);
+  if (!selected) {
+    box.style.display = "none";
+    box.textContent = "";
+    nextBtn.disabled = true;
+    return;
+  }
+  const details = [];
+  if (selected.ip_address) details.push(`IP ${selected.ip_address}`);
+  if (selected.alias) details.push(`alias "${selected.alias}"`);
+  const detailText = details.length ? ` — ${details.join(", ")}` : "";
+  box.textContent = `Selected interface: ${selected.name || selected.description || ("interface " + selected.if_index)} (ifIndex ${selected.if_index})${detailText}`;
+  box.style.display = "block";
+  nextBtn.disabled = false;
+}
+
 async function selectInterface(ifIndex) {
   try {
     await api(`/api/wan-links/${state.wanLinkId}/select-interface`, { method: "POST", body: { if_index: ifIndex } });
+    // Only update visible state after the backend has confirmed the
+    // selection — on failure state.selectedIfIndex is left untouched and
+    // renderDiscoveryTable is never called, so the DOM keeps showing
+    // whatever was selected before this attempt.
     state.selectedIfIndex = ifIndex;
-    document.querySelectorAll("#discovery-area tr.selectable").forEach(r => r.classList.remove("selected-row"));
-    document.getElementById(`iface-row-${ifIndex}`).classList.add("selected-row");
-    document.getElementById("step4-next").disabled = false;
     clearNotice();
+    renderDiscoveryTable(state.discoveredInterfaces);
   } catch (e) { notice(e.message); }
 }
 

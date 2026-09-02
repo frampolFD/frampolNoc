@@ -223,6 +223,25 @@ h2 { font-size: 17px; margin-top: 0; }
 .form-field.checkbox { flex-direction: row; align-items: center; }
 .form-field.checkbox input { width: auto; }
 
+.password-input { position: relative; display: flex; }
+.password-input input { width: 100%; padding-right: 38px; }
+.password-toggle {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  width: 34px;
+  border: 0;
+  border-left: 1px solid var(--brand-grey-border);
+  border-radius: 0 4px 4px 0;
+  background: #fff;
+  color: var(--brand-grey);
+  cursor: pointer;
+  font-size: 16px;
+}
+.password-toggle:hover,
+.password-toggle:focus-visible { color: var(--brand-burgundy); }
+
 .panel {
   background: var(--panel-bg);
   border: 1px solid var(--brand-grey-border);
@@ -237,7 +256,15 @@ table.data-table th { color: var(--brand-grey); font-weight: 600; font-size: 11p
 table.data-table tr.selectable { cursor: pointer; }
 table.data-table tr.selectable:hover { background: var(--brand-grey-light); }
 table.data-table tr.suggested { background: #fff8e1; }
-table.data-table tr.selected-row { background: #f2e8ea; }
+table.data-table tr.selected-row { background: #f2e8ea; box-shadow: inset 3px 0 0 var(--brand-burgundy); }
+
+.btn.selected {
+  background: var(--brand-burgundy);
+  border-color: var(--brand-burgundy);
+  color: #fff;
+  font-weight: 600;
+}
+.btn.selected:hover { background: var(--brand-burgundy-dark); color: #fff; }
 
 .tabs { display: flex; gap: 4px; margin-bottom: 12px; }
 .tab-btn {
@@ -254,6 +281,7 @@ table.data-table tr.selected-row { background: #f2e8ea; }
 .badge-up { background: #e6f4ea; color: var(--health-green); }
 .badge-down { background: #fce8e8; color: var(--health-red); }
 .badge-info { background: var(--brand-grey-light); color: var(--brand-grey); }
+.badge-recommended { background: #fff3cd; color: #8a6100; border: 1px solid #f0d68a; font-weight: 600; }
 
 .alert-row.critical { color: var(--health-red); }
 .alert-row.warning { color: var(--health-amber); }
